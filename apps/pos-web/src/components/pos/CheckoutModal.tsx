@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Order, PaymentMethod } from "@pos/shared-types";
+import type { Order, PaymentMethod, RequestedInvoiceType, Invoice, Store } from "@pos/shared-types";
 import type { CartTotals } from "@/stores/cart-calculations";
 import type { OrderItemPayload } from "@/stores/cart-calculations";
 import { sumPayments, remainingToPay, computeChange, validatePayments, type PaymentLine } from "@/stores/payment-calculations";
 import { useCreateOrder } from "@/hooks/useOrders";
+import { useFiscalConfig } from "@/hooks/useFiscalConfig";
+import { useCreateCustomer } from "@/hooks/useCustomers";
+import { useIssueInvoice } from "@/hooks/useInvoices";
 import { ApiError } from "@/lib/api";
+import { ThermalReceipt, type ReceiptPaperSize } from "./ThermalReceipt";
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Efectivo",
@@ -17,10 +21,19 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CURRENT_ACCOUNT: "Cuenta corriente",
 };
 
+const FISCAL_OPTION_LABELS: Record<RequestedInvoiceType, string> = {
+  TICKET_X: "Ticket (no fiscal)",
+  FACTURA_B: "Factura B",
+  FACTURA_A: "Factura A",
+};
+
+const CUIT_PATTERN = /^\d{11}$/;
+
 export function CheckoutModal({
   totals,
   orderItemsPayload,
   storeId,
+  store,
   cashShiftId,
   onNewSale,
   onClose,
@@ -28,19 +41,39 @@ export function CheckoutModal({
   totals: CartTotals;
   orderItemsPayload: OrderItemPayload[];
   storeId: string;
+  store: Store;
   cashShiftId: string;
   onNewSale: () => void;
   onClose: () => void;
 }) {
   const createOrder = useCreateOrder();
+  const createCustomer = useCreateCustomer();
+  const issueInvoice = useIssueInvoice();
+  const { data: fiscalConfig } = useFiscalConfig(storeId);
+
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: "CASH", amount: totals.total }]);
+  const [fiscalType, setFiscalType] = useState<RequestedInvoiceType>("TICKET_X");
+  const [cuit, setCuit] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [issuingInvoice, setIssuingInvoice] = useState(false);
+  const [resolvedCustomerId, setResolvedCustomerId] = useState<string | undefined>();
+  const [paperSize, setPaperSize] = useState<ReceiptPaperSize>("80mm");
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     confirmRef.current?.focus();
   }, []);
+
+  // Si el local no tiene fiscal config cargada (o cambió de local), no hay
+  // forma de emitir Factura A/B — se cae a Ticket para no dejar seleccionada
+  // una opción que el servidor va a rechazar.
+  useEffect(() => {
+    if (!fiscalConfig && fiscalType !== "TICKET_X") setFiscalType("TICKET_X");
+  }, [fiscalConfig, fiscalType]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -69,9 +102,46 @@ export function CheckoutModal({
     setPayments(payments.filter((_, idx) => idx !== i));
   }
 
+  async function issueForOrder(orderId: string, requestedType: RequestedInvoiceType, customerId?: string) {
+    setIssuingInvoice(true);
+    setInvoice(null);
+    setInvoiceError(null);
+    try {
+      const inv = await issueInvoice.mutateAsync({ orderId, requestedType, customerId });
+      setInvoice(inv);
+      setPaperSize(inv.invoiceType === "FACTURA_A" ? "A4" : "80mm");
+    } catch (err) {
+      setInvoiceError(err instanceof ApiError ? err.message : "No se pudo emitir el comprobante");
+    } finally {
+      setIssuingInvoice(false);
+    }
+  }
+
   async function handleConfirm() {
     setError(null);
+    if (fiscalType === "FACTURA_A" && !CUIT_PATTERN.test(cuit)) {
+      setError("Ingresá un CUIT válido (11 dígitos, sin guiones)");
+      return;
+    }
+    if (fiscalType === "FACTURA_A" && !businessName.trim()) {
+      setError("Ingresá la razón social del cliente");
+      return;
+    }
+
     try {
+      let customerId: string | undefined;
+      if (fiscalType === "FACTURA_A") {
+        const customer = await createCustomer.mutateAsync({
+          docType: "CUIT",
+          docNumber: cuit,
+          name: businessName,
+          businessName,
+          taxCondition: "RESPONSABLE_INSCRIPTO",
+        });
+        customerId = customer.id;
+        setResolvedCustomerId(customerId);
+      }
+
       const order = await createOrder.mutateAsync({
         storeId,
         cashShiftId,
@@ -79,6 +149,7 @@ export function CheckoutModal({
         payments: payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })),
       });
       setCompletedOrder(order);
+      await issueForOrder(order.id, fiscalType, customerId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo registrar la venta");
     }
@@ -86,7 +157,16 @@ export function CheckoutModal({
 
   if (completedOrder) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
+        {invoice && (
+          <ThermalReceipt
+            order={completedOrder}
+            invoice={invoice}
+            store={store}
+            fiscalConfig={fiscalConfig ?? null}
+            paperSize={paperSize}
+          />
+        )}
         <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-6 text-center dark:bg-zinc-900">
           <div className="text-4xl">✓</div>
           <h2 className="text-lg font-medium">Venta #{completedOrder.orderNumber} registrada</h2>
@@ -105,6 +185,63 @@ export function CheckoutModal({
             )}
           </div>
 
+          <div className="space-y-2 rounded bg-zinc-100 p-3 text-left text-sm dark:bg-zinc-800">
+            {issuingInvoice && <p className="text-zinc-500">Emitiendo comprobante…</p>}
+            {invoice && invoice.status === "ISSUED" && (
+              <>
+                <p className="font-medium">{FISCAL_OPTION_LABELS[fiscalType] ?? invoice.invoiceType} emitido</p>
+                {invoice.cae && <p className="text-xs text-zinc-500">CAE {invoice.cae}</p>}
+              </>
+            )}
+            {invoice && invoice.status === "REJECTED" && (
+              <>
+                <p className="text-red-600">AFIP rechazó el comprobante: {invoice.errorMessage}</p>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void issueForOrder(completedOrder.id, fiscalType, resolvedCustomerId)}
+                    className="text-xs underline"
+                  >
+                    Reintentar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void issueForOrder(completedOrder.id, "TICKET_X")}
+                    className="text-xs underline"
+                  >
+                    Emitir Ticket en su lugar
+                  </button>
+                </div>
+              </>
+            )}
+            {invoiceError && (
+              <>
+                <p className="text-red-600">{invoiceError}</p>
+                <button
+                  type="button"
+                  onClick={() => void issueForOrder(completedOrder.id, fiscalType, resolvedCustomerId)}
+                  className="text-xs underline"
+                >
+                  Reintentar
+                </button>
+              </>
+            )}
+            {invoice && (
+              <div className="flex gap-2 pt-1 text-xs text-zinc-500">
+                {(["58mm", "80mm", "A4"] as const).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setPaperSize(size)}
+                    className={paperSize === size ? "font-medium text-zinc-900 underline dark:text-zinc-50" : "underline"}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-col gap-2 pt-2">
             <button
               type="button"
@@ -116,9 +253,10 @@ export function CheckoutModal({
             <button
               type="button"
               onClick={() => window.print()}
-              className="rounded border border-zinc-300 py-2 dark:border-zinc-700"
+              disabled={!invoice}
+              className="rounded border border-zinc-300 py-2 disabled:opacity-50 dark:border-zinc-700"
             >
-              Imprimir ticket
+              Imprimir comprobante
             </button>
           </div>
         </div>
@@ -196,6 +334,49 @@ export function CheckoutModal({
             <div className="flex justify-between text-green-600">
               <span>Vuelto</span>
               <span>${change.toLocaleString("es-AR")}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-sm text-zinc-500">Comprobante</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {(Object.keys(FISCAL_OPTION_LABELS) as RequestedInvoiceType[]).map((option) => {
+              const disabled = option !== "TICKET_X" && !fiscalConfig;
+              return (
+                <label key={option} className={disabled ? "flex items-center gap-1 opacity-40" : "flex items-center gap-1"}>
+                  <input
+                    type="radio"
+                    name="fiscalType"
+                    disabled={disabled}
+                    checked={fiscalType === option}
+                    onChange={() => setFiscalType(option)}
+                  />
+                  {FISCAL_OPTION_LABELS[option]}
+                </label>
+              );
+            })}
+          </div>
+          {!fiscalConfig && (
+            <p className="text-xs text-zinc-400">
+              Este local no tiene configuración fiscal cargada — solo se puede emitir Ticket.
+            </p>
+          )}
+          {fiscalType === "FACTURA_A" && (
+            <div className="flex gap-2 pt-1">
+              <input
+                placeholder="CUIT (11 dígitos)"
+                value={cuit}
+                onChange={(e) => setCuit(e.target.value.replace(/\D/g, ""))}
+                maxLength={11}
+                className="w-32 rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+              />
+              <input
+                placeholder="Razón social"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="flex-1 rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+              />
             </div>
           )}
         </div>

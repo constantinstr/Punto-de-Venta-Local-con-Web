@@ -24,3 +24,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Impresión de comprobantes (Sprint 6): #thermal-receipt (ver
+   components/pos/ThermalReceipt.tsx) es el único nodo visible al imprimir —
+   todo lo demás (el POS, los modales) se oculta acá en vez de armar una
+   ventana de impresión aparte. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #thermal-receipt,
+  #thermal-receipt * {
+    visibility: visible;
+  }
+  #thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  @page {
+    margin: 0;
+  }
+}

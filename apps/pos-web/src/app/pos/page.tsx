@@ -32,6 +32,7 @@ export default function PosPage() {
   const { data: categories } = useCategories();
 
   const storeId = useCartStore((s) => s.storeId);
+  const currentStore = stores?.find((s) => s.id === storeId);
   const setStoreId = useCartStore((s) => s.setStoreId);
   const items = useCartStore((s) => s.items);
   const globalDiscount = useCartStore((s) => s.globalDiscount);
@@ -402,11 +403,12 @@ export default function PosPage() {
         />
       )}
 
-      {checkoutOpen && currentShift && storeId && (
+      {checkoutOpen && currentShift && storeId && currentStore && (
         <CheckoutModal
           totals={totals}
           orderItemsPayload={orderItemsPayload}
           storeId={storeId}
+          store={currentStore}
           cashShiftId={currentShift.id}
           onNewSale={() => {
             clearCart();

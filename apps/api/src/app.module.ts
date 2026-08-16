@@ -13,6 +13,9 @@ import { StockModule } from './stock/stock.module';
 import { CashRegistersModule } from './cash-registers/cash-registers.module';
 import { CashShiftsModule } from './cash-shifts/cash-shifts.module';
 import { OrdersModule } from './orders/orders.module';
+import { FiscalConfigModule } from './fiscal-config/fiscal-config.module';
+import { InvoicesModule } from './invoices/invoices.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { OrdersModule } from './orders/orders.module';
     CashRegistersModule,
     CashShiftsModule,
     OrdersModule,
+    FiscalConfigModule,
+    InvoicesModule,
+    CustomersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

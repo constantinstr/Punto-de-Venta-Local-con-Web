@@ -320,3 +320,95 @@ export interface Order {
   payments: OrderPayment[];
   createdAt: string;
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// FACTURACIÓN AFIP (Sprint 6)
+// ──────────────────────────────────────────────────────────────────────────
+
+export type FiscalTaxCondition = "MONOTRIBUTO" | "RESPONSABLE_INSCRIPTO" | "EXENTO";
+export type CustomerDocType = "CUIT" | "DNI" | "PASAPORTE" | "FINAL_CONSUMER";
+export type CustomerTaxCondition = "CONSUMIDOR_FINAL" | "RESPONSABLE_INSCRIPTO" | "MONOTRIBUTO" | "EXENTO";
+export type InvoiceType =
+  | "FACTURA_A"
+  | "FACTURA_B"
+  | "FACTURA_C"
+  | "NOTA_CREDITO_A"
+  | "NOTA_CREDITO_B"
+  | "NOTA_CREDITO_C"
+  | "TICKET_X";
+export type InvoiceStatus = "ISSUED" | "REJECTED" | "CANCELLED";
+// Factura C nunca es seleccionable por el cajero — el servidor la fuerza
+// solo si el emisor es Monotributo (ver invoice-type.util.ts en la API).
+export type RequestedInvoiceType = "TICKET_X" | "FACTURA_A" | "FACTURA_B";
+
+export interface FiscalConfig {
+  id: string;
+  storeId: string;
+  cuit: string;
+  taxCondition: FiscalTaxCondition;
+  grossIncomeNumber: string | null;
+  activityStartDate: string | null;
+  ptoVta: number;
+  isProduction: boolean;
+}
+
+export interface CreateFiscalConfigInput {
+  storeId: string;
+  cuit: string;
+  taxCondition: FiscalTaxCondition;
+  grossIncomeNumber?: string;
+  activityStartDate?: string;
+  ptoVta: number;
+  crtCertificate: string;
+  keyCertificate: string;
+  isProduction?: boolean;
+}
+
+export interface Customer {
+  id: string;
+  docType: CustomerDocType;
+  docNumber: string | null;
+  name: string;
+  businessName: string | null;
+  taxCondition: CustomerTaxCondition;
+  address: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface CreateCustomerInput {
+  docType?: CustomerDocType;
+  docNumber?: string;
+  name: string;
+  businessName?: string;
+  taxCondition?: CustomerTaxCondition;
+  address?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface Invoice {
+  id: string;
+  orderId: string;
+  customerId: string | null;
+  customer: Customer | null;
+  invoiceType: InvoiceType;
+  ptoVta: number;
+  cbteNro: number | null;
+  cae: string | null;
+  caeVto: string | null;
+  afipQrUrl: string | null;
+  status: InvoiceStatus;
+  subtotalNeto: string;
+  vatAmount: string;
+  total: string;
+  errorMessage: string | null;
+  issuedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateInvoiceInput {
+  orderId: string;
+  customerId?: string;
+  requestedType?: RequestedInvoiceType;
+}

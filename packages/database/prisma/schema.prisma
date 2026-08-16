@@ -79,14 +79,33 @@ enum InvoiceType {
   NOTA_CREDITO_A
   NOTA_CREDITO_B
   NOTA_CREDITO_C
-  TICKET_NO_FISCAL
+  TICKET_X
 }
 
 enum InvoiceStatus {
-  PENDING
-  AUTHORIZED
+  ISSUED
   REJECTED
-  ERROR
+  CANCELLED
+}
+
+enum CustomerDocType {
+  CUIT
+  DNI
+  PASAPORTE
+  FINAL_CONSUMER
+}
+
+enum CustomerTaxCondition {
+  CONSUMIDOR_FINAL
+  RESPONSABLE_INSCRIPTO
+  MONOTRIBUTO
+  EXENTO
+}
+
+enum FiscalTaxCondition {
+  MONOTRIBUTO
+  RESPONSABLE_INSCRIPTO
+  EXENTO
 }
 
 enum SyncEntityType {
@@ -133,6 +152,8 @@ model Tenant {
   orders          Order[]
   orderItems      OrderItem[]
   payments        Payment[]
+  invoices        Invoice[]
+  fiscalConfigs   FiscalConfig[]
   customers       Customer[]
   syncQueue       SyncQueue[]
 }
@@ -162,13 +183,13 @@ model Store {
   tenant            Tenant             @relation(fields: [tenantId], references: [id])
   name              String
   address           String?
-  afipPointOfSale   Int?
-  afipCredential    AfipCredential?
+  fiscalConfig      FiscalConfig?
   wooCommerceConfig WooCommerceConfig?
   cashRegisters     CashRegister[]
   cashShifts        CashShift[]
   stockLevels       StockLevel[]
   orders            Order[]
+  invoices          Invoice[]
   users             User[]             @relation("UserStores")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -363,18 +384,21 @@ model StockLevel {
 // ──────────────────────────────────────────────────────────────────────────
 
 model Customer {
-  id              String   @id @default(cuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
-  docType         String? // DNI, CUIT
-  docNumber       String?
-  name            String
-  email           String?
-  phone           String?
-  fiscalCondition String? // Consumidor Final, Responsable Inscripto, Monotributo, Exento
-  accountBalance  Decimal  @default(0) @db.Decimal(12, 2) // cuenta corriente
-  orders          Order[]
-  createdAt       DateTime @default(now())
+  id             String               @id @default(cuid())
+  tenantId       String
+  tenant         Tenant               @relation(fields: [tenantId], references: [id])
+  docType        CustomerDocType      @default(FINAL_CONSUMER)
+  docNumber      String?
+  name           String
+  businessName   String? // razón social — se usa en Factura A a Responsable Inscripto
+  taxCondition   CustomerTaxCondition @default(CONSUMIDOR_FINAL)
+  address        String?
+  email          String?
+  phone          String?
+  accountBalance Decimal              @default(0) @db.Decimal(12, 2) // cuenta corriente
+  orders         Order[]
+  invoices       Invoice[]
+  createdAt      DateTime             @default(now())
 
   @@index([tenantId])
 }
@@ -488,40 +512,65 @@ model Payment {
 // FISCAL (AFIP)
 // ──────────────────────────────────────────────────────────────────────────
 
+// A diferencia de Order (que se crea siempre, venta contado), Invoice solo
+// se crea DESPUÉS de tener una respuesta de AFIP (o de asignar el número de
+// Ticket X) — nunca queda un Invoice "a medias" mientras se espera esa
+// respuesta. Ver docs/afip.md y apps/api/src/afip/ para el detalle del
+// intercambio WSAA/WSFE.
 model Invoice {
-  id                String        @id @default(cuid())
-  orderId           String        @unique
-  order             Order         @relation(fields: [orderId], references: [id])
-  type              InvoiceType
-  pointOfSale       Int
-  voucherNumber     Int?
-  cae               String?
-  caeExpirationDate DateTime?
-  qrData            String?       @db.Text
-  status            InvoiceStatus @default(PENDING)
-  afipResponseRaw   Json?
-  errorMessage      String?
-  issuedAt          DateTime?
-  createdAt         DateTime      @default(now())
+  id           String        @id @default(cuid())
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  storeId      String
+  store        Store         @relation(fields: [storeId], references: [id])
+  orderId      String        @unique
+  order        Order         @relation(fields: [orderId], references: [id])
+  customerId   String?
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  invoiceType  InvoiceType
+  ptoVta       Int
+  cbteNro      Int?
+  cae          String?
+  caeVto       DateTime?
+  afipQrUrl    String?       @db.Text
+  status       InvoiceStatus
+  subtotalNeto Decimal       @db.Decimal(12, 2)
+  vatAmount    Decimal       @db.Decimal(12, 2)
+  total        Decimal       @db.Decimal(12, 2)
+  afipResponse Json?
+  errorMessage String?
+  issuedAt     DateTime?
+  createdAt    DateTime      @default(now())
 
+  @@unique([storeId, invoiceType, cbteNro])
+  @@index([tenantId])
+  @@index([storeId])
   @@index([status])
 }
 
-model AfipCredential {
-  id               String    @id @default(cuid())
-  storeId          String    @unique
-  store            Store     @relation(fields: [storeId], references: [id])
-  cuit             String
-  environment      String    @default("homologacion") // homologacion | produccion
-  certificate      String    @db.Text // referencia/cifrado, no texto plano en prod
-  privateKey       String    @db.Text // referencia/cifrado, no texto plano en prod
-  lastTaRequestAt  DateTime?
-  taToken          String?   @db.Text
-  taSign           String?   @db.Text
-  taExpirationTime DateTime?
+// El Ticket de Acceso (WSAA) NO se persiste acá — vive en Redis con TTL
+// (ver apps/api/src/afip/afip-auth.service.ts), así que este modelo son
+// solo los datos de identidad fiscal + credenciales, no estado de sesión.
+model FiscalConfig {
+  id                String             @id @default(cuid())
+  tenantId          String
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  storeId           String             @unique
+  store             Store              @relation(fields: [storeId], references: [id])
+  cuit              String
+  taxCondition      FiscalTaxCondition
+  grossIncomeNumber String?
+  activityStartDate DateTime?
+  ptoVta            Int
+  crtCertificate    String             @db.Text // referencia/cifrado, no texto plano en prod
+  keyCertificate    String             @db.Text // referencia/cifrado, no texto plano en prod
+  isProduction      Boolean            @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, ptoVta])
+  @@index([tenantId])
 }
 
 // ──────────────────────────────────────────────────────────────────────────
