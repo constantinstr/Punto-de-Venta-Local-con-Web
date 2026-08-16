@@ -16,6 +16,10 @@ import {
 import type { AuthUser } from '../common/types/auth-user';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import type { FindOrdersQueryDto } from './dto/find-orders-query.dto';
+import {
+  WooStockSyncService,
+  type StockSyncEntry,
+} from '../woocommerce/woo-stock-sync.service';
 
 const VAT_RATE_MAP: Record<VatCondition, number> = {
   IVA_21: 21,
@@ -58,6 +62,8 @@ interface ResolvedOrderItem {
 
 @Injectable()
 export class OrdersService {
+  constructor(private readonly wooStockSyncService: WooStockSyncService) {}
+
   // El número de orden se calcula con MAX+1 dentro de la transacción; el
   // @@unique([tenantId, storeId, orderNumber]) es la red de seguridad real
   // contra la carrera entre dos cajas concurrentes — si chocan, la
@@ -67,7 +73,22 @@ export class OrdersService {
     let lastError: unknown;
     for (let attempt = 0; attempt < MAX_ORDER_NUMBER_ATTEMPTS; attempt++) {
       try {
-        return await this.attemptCreate(tenantId, actor, dto);
+        const { order, wooSyncEntries } = await this.attemptCreate(
+          tenantId,
+          actor,
+          dto,
+        );
+        // Fuera de la transacción a propósito: encolar sync de WooCommerce
+        // nunca debe poder hacer fallar (ni demorar) una venta ya
+        // confirmada — ver WooStockSyncService.
+        if (wooSyncEntries.length > 0) {
+          await this.wooStockSyncService.enqueueStockSync(
+            tenantId,
+            order.storeId,
+            wooSyncEntries,
+          );
+        }
+        return order;
       } catch (err) {
         if (
           err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -87,7 +108,9 @@ export class OrdersService {
     actor: AuthUser,
     dto: CreateOrderDto,
   ) {
-    return withTenantContext(tenantId, async (tx) => {
+    const wooSyncEntries: StockSyncEntry[] = [];
+
+    const order = await withTenantContext(tenantId, async (tx) => {
       const store = await tx.store.findFirst({
         where: { id: dto.storeId, tenantId },
       });
@@ -171,6 +194,13 @@ export class OrdersService {
                 requiredQty,
                 bi.componentProduct.name,
               );
+              // Un combo nunca tiene wooProductId propio en este diseño —
+              // lo que se sincroniza hacia WooCommerce son sus componentes
+              // (ver docs/woocommerce-sync.md y Sprint 7).
+              wooSyncEntries.push({
+                productId: bi.componentVariantId ? null : bi.componentProductId,
+                variantId: bi.componentVariantId,
+              });
             }
             const attrs = bi.componentVariant?.attributes as
               Record<string, string> | undefined;
@@ -192,6 +222,10 @@ export class OrdersService {
             itemDto.quantity,
             product.name,
           );
+          wooSyncEntries.push({
+            productId: itemDto.variantId ? null : product.id,
+            variantId: itemDto.variantId ?? null,
+          });
         }
 
         resolvedItems.push({
@@ -275,6 +309,8 @@ export class OrdersService {
         include: ORDER_INCLUDE,
       });
     });
+
+    return { order, wooSyncEntries };
   }
 
   async findAll(tenantId: string, query: FindOrdersQueryDto) {

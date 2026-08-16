@@ -12,10 +12,13 @@ import {
 import { getAvailableStock } from './stock-calculation';
 import type { AuthUser } from '../common/types/auth-user';
 import type { AdjustStockDto } from './dto/adjust-stock.dto';
+import { WooStockSyncService } from '../woocommerce/woo-stock-sync.service';
 
 @Injectable()
 export class StockService {
   private readonly logger = new Logger(StockService.name);
+
+  constructor(private readonly wooStockSyncService: WooStockSyncService) {}
 
   async findAllForStore(tenantId: string, storeId: string) {
     return withTenantContext(tenantId, async (tx) => {
@@ -111,6 +114,16 @@ export class StockService {
           `by=${actor.email} reason="${dto.reason}" -> quantity=${nextQuantity}`,
       );
 
+      return level;
+    }).then(async (level) => {
+      // Fuera de la transacción a propósito — mismo motivo que en
+      // OrdersService.create: encolar sync no puede hacer fallar el ajuste.
+      await this.wooStockSyncService.enqueueStockSync(tenantId, dto.storeId, [
+        {
+          productId: dto.variantId ? null : dto.productId,
+          variantId: dto.variantId ?? null,
+        },
+      ]);
       return level;
     });
   }

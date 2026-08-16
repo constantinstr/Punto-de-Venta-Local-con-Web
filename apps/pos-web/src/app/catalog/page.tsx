@@ -99,6 +99,7 @@ export default function CatalogPage() {
             <th className="py-2">Categoría</th>
             <th className="py-2 text-right">Precio</th>
             <th className="py-2"></th>
+            <th className="py-2"></th>
           </tr>
         </thead>
         <tbody>
@@ -109,6 +110,7 @@ export default function CatalogPage() {
               <td className="py-2">{TYPE_LABELS[p.type]}</td>
               <td className="py-2">{p.category?.name ?? "—"}</td>
               <td className="py-2 text-right">${Number(p.price).toLocaleString("es-AR")}</td>
+              <td className="py-2">{p.wooProductId && <WooBadge />}</td>
               <td className="py-2 text-right">
                 <Link href={`/catalog/${p.id}`} className="underline">
                   Ver
@@ -118,7 +120,7 @@ export default function CatalogPage() {
           ))}
           {visibleProducts.length === 0 && !isLoading && (
             <tr>
-              <td colSpan={6} className="py-6 text-center text-zinc-400">
+              <td colSpan={7} className="py-6 text-center text-zinc-400">
                 No hay productos que coincidan con el filtro.
               </td>
             </tr>
@@ -126,5 +128,16 @@ export default function CatalogPage() {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function WooBadge() {
+  return (
+    <span
+      title="Vinculado con WooCommerce"
+      className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+    >
+      Woo
+    </span>
   );
 }

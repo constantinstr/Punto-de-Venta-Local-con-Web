@@ -109,22 +109,27 @@ enum FiscalTaxCondition {
 }
 
 enum SyncEntityType {
-  PRODUCT_STOCK
+  PRODUCT
+  STOCK
   ORDER
-  CATEGORY
-  PRICE
 }
 
 enum SyncDirection {
-  POS_TO_WOO
-  WOO_TO_POS
+  OUTBOUND_TO_WOO
+  INBOUND_FROM_WOO
 }
 
 enum SyncStatus {
   PENDING
-  PROCESSING
-  COMPLETED
+  SUCCESS
   FAILED
+}
+
+enum WooSyncStatus {
+  SYNCED
+  PENDING
+  ERROR
+  IGNORED
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -140,22 +145,23 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           User[]
-  stores          Store[]
-  categories      Category[]
-  products        Product[]
-  productVariants ProductVariant[]
-  stockLevels     StockLevel[]
-  cashRegisters   CashRegister[]
-  cashShifts      CashShift[]
-  cashMovements   CashMovement[]
-  orders          Order[]
-  orderItems      OrderItem[]
-  payments        Payment[]
-  invoices        Invoice[]
-  fiscalConfigs   FiscalConfig[]
-  customers       Customer[]
-  syncQueue       SyncQueue[]
+  users              User[]
+  stores             Store[]
+  categories         Category[]
+  products           Product[]
+  productVariants    ProductVariant[]
+  stockLevels        StockLevel[]
+  cashRegisters      CashRegister[]
+  cashShifts         CashShift[]
+  cashMovements      CashMovement[]
+  orders             Order[]
+  orderItems         OrderItem[]
+  payments           Payment[]
+  invoices           Invoice[]
+  fiscalConfigs      FiscalConfig[]
+  customers          Customer[]
+  syncLogs           SyncLog[]
+  wooCommerceConfigs WooCommerceConfig[]
 }
 
 model User {
@@ -282,22 +288,24 @@ model Category {
 }
 
 model Product {
-  id           String       @id @default(cuid())
-  tenantId     String
-  tenant       Tenant       @relation(fields: [tenantId], references: [id])
-  categoryId   String?
-  category     Category?    @relation(fields: [categoryId], references: [id])
-  sku          String
-  barcode      String?
-  name         String
-  description  String?
-  type         ProductType  @default(SIMPLE)
-  costPrice    Decimal      @default(0) @db.Decimal(12, 2)
-  price        Decimal      @db.Decimal(12, 2)
-  vatCondition VatCondition @default(IVA_21)
-  trackStock   Boolean      @default(true)
-  isActive     Boolean      @default(true)
-  wooProductId Int?
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  categoryId    String?
+  category      Category?     @relation(fields: [categoryId], references: [id])
+  sku           String
+  barcode       String?
+  name          String
+  description   String?
+  type          ProductType   @default(SIMPLE)
+  costPrice     Decimal       @default(0) @db.Decimal(12, 2)
+  price         Decimal       @db.Decimal(12, 2)
+  vatCondition  VatCondition  @default(IVA_21)
+  trackStock    Boolean       @default(true)
+  isActive      Boolean       @default(true)
+  wooProductId  Int?
+  wooSyncStatus WooSyncStatus @default(IGNORED)
+  wooLastSyncAt DateTime?
 
   variants                       ProductVariant[]
   stockLevels                    StockLevel[]
@@ -317,17 +325,19 @@ model Product {
 // sku/barcode a nivel de tenant (no solo por producto) y para habilitar RLS
 // directo sobre esta tabla, igual que en Product.
 model ProductVariant {
-  id             String   @id @default(cuid())
-  tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id])
-  productId      String
-  product        Product  @relation(fields: [productId], references: [id])
-  sku            String
-  barcode        String?
-  attributes     Json // { "color": "Rojo", "talle": "M" }
-  price          Decimal? @db.Decimal(12, 2)
-  costPrice      Decimal? @db.Decimal(12, 2)
-  wooVariationId Int?
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  productId     String
+  product       Product       @relation(fields: [productId], references: [id])
+  sku           String
+  barcode       String?
+  attributes    Json // { "color": "Rojo", "talle": "M" }
+  price         Decimal?      @db.Decimal(12, 2)
+  costPrice     Decimal?      @db.Decimal(12, 2)
+  wooVariantId  Int?
+  wooSyncStatus WooSyncStatus @default(IGNORED)
+  wooLastSyncAt DateTime?
 
   stockLevels                    StockLevel[]
   orderItems                     OrderItem[]
@@ -574,38 +584,58 @@ model FiscalConfig {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// INTEGRACIÓN WOOCOMMERCE
+// INTEGRACIÓN WOOCOMMERCE (Sprint 7)
 // ──────────────────────────────────────────────────────────────────────────
 
+// tenantId está denormalizado (igual que FiscalConfig) para poder filtrar
+// explícitamente en cada query — pero, a diferencia de FiscalConfig, esta
+// tabla NO tiene RLS forzada todavía: el endpoint público de webhooks (ver
+// apps/api/src/woocommerce/woo-webhook.controller.ts) necesita resolver un
+// WooCommerceConfig por id SIN conocer el tenant de antemano (la request
+// llega de WooCommerce, no de un usuario autenticado) — igual que
+// withAuthLookupContext resuelve el email de login antes de saber el
+// tenant. Extender ese mismo bypass a esta tabla agregaría una segunda
+// política especial de RLS por una ganancia marginal; se prefiere dejarla
+// en el mismo grupo que las demás tablas hijas pendientes de RLS por
+// cascada (ver comentario en la migración ..._enable_row_level_security).
 model WooCommerceConfig {
-  id             String    @id @default(cuid())
-  storeId        String    @unique
-  store          Store     @relation(fields: [storeId], references: [id])
-  siteUrl        String
-  consumerKey    String    @db.Text // cifrado
-  consumerSecret String    @db.Text // cifrado
-  webhookSecret  String
-  isActive       Boolean   @default(true)
-  lastSyncAt     DateTime?
+  id                String    @id @default(cuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  storeId           String    @unique
+  store             Store     @relation(fields: [storeId], references: [id])
+  apiUrl            String
+  consumerKey       String    @db.Text // referencia/cifrado, no texto plano en prod
+  consumerSecret    String    @db.Text // referencia/cifrado, no texto plano en prod
+  webhookSecret     String
+  syncStockOutbound Boolean   @default(true)
+  syncStockInbound  Boolean   @default(true)
+  isActive          Boolean   @default(true)
+  lastSyncAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
-model SyncQueue {
-  id          String         @id @default(cuid())
-  tenantId    String
-  tenant      Tenant         @relation(fields: [tenantId], references: [id])
-  entityType  SyncEntityType
-  direction   SyncDirection
-  entityId    String // id local o remoto según dirección
-  payload     Json
-  status      SyncStatus     @default(PENDING)
-  attempts    Int            @default(0)
-  maxAttempts Int            @default(5)
-  lastError   String?
-  processedAt DateTime?
-  createdAt   DateTime       @default(now())
+// Bitácora de auditoría de sincronización — no es la cola de trabajo (eso
+// lo maneja BullMQ/Redis, ver apps/api/src/woocommerce/woo-queue.service.ts):
+// cada job de BullMQ crea su fila acá al encolarse (status=PENDING) y la
+// actualiza a SUCCESS/FAILED al terminar, así que esta tabla siempre queda
+// como el historial consultable desde el panel de integración, sobreviva o
+// no el job en Redis.
+model SyncLog {
+  id           String         @id @default(cuid())
+  tenantId     String
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  entityType   SyncEntityType
+  direction    SyncDirection
+  status       SyncStatus     @default(PENDING)
+  payload      Json
+  errorMessage String?
+  createdAt    DateTime       @default(now())
 
+  @@index([tenantId, createdAt])
   @@index([tenantId, status])
 }

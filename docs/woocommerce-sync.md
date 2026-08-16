@@ -1,176 +1,116 @@
-# Sincronización bidireccional de stock — WooCommerce
+# Sincronización bidireccional de stock — WooCommerce (Sprint 7)
 
-Arquitectura extensible: la interfaz de sincronización se define contra un
-contrato genérico (`EcommerceConnector`) para que agregar Tiendanube después
-sea implementar un nuevo conector, no reescribir el pipeline.
+Implementado en `apps/api/src/woocommerce/`. Cola BullMQ + Redis para no
+bloquear el ciclo transaccional del POS con la latencia/disponibilidad de
+WooCommerce, y `SyncLog` (Postgres) como bitácora de auditoría — la cola en
+sí vive en Redis, no en la base.
 
-## 1. Flujos
+## 1. Modelo de datos
 
-**POS vende → descuenta en la web:**
+- `WooCommerceConfig` (`schema.prisma`): credenciales + flags por local
+  (`storeId` único). `tenantId` está denormalizado para filtrar explícito en
+  cada query, pero **no tiene RLS forzada** — el webhook público necesita
+  resolver esta fila por `id` sin conocer el tenant de antemano (ver
+  comentario en el modelo). `consumerKey`/`consumerSecret`/`webhookSecret`
+  nunca se devuelven por API una vez guardados (mismo criterio que
+  `FiscalConfig`).
+- `Product.wooProductId` / `ProductVariant.wooVariantId`: id remoto en
+  WooCommerce. `wooSyncStatus` (`SYNCED`/`PENDING`/`ERROR`/`IGNORED`) +
+  `wooLastSyncAt` para trazabilidad visual (badge en el catálogo).
+- `SyncLog`: una fila por evento de sincronización (`entityType`:
+  `PRODUCT`/`STOCK`/`ORDER`, `direction`: `OUTBOUND_TO_WOO`/
+  `INBOUND_FROM_WOO`, `status`: `PENDING`/`SUCCESS`/`FAILED`). Se crea en
+  PENDING al encolar el job de BullMQ, el worker la cierra en SUCCESS/FAILED.
+  El `payload` de las filas STOCK/ORDER incluye `configId`, lo que permite
+  reintentar (`POST /integrations/woocommerce/sync-logs/:id/retry`) sin
+  volver a resolver nada.
+
+## 2. Outbound: POS → WooCommerce
+
 ```
-Venta confirmada en caja (transacción Prisma)
-  → decremento atómico de StoreStock
-  → encolar job SyncQueue { direction: POS_TO_WOO, entityType: PRODUCT_STOCK }
-  → worker BullMQ consume el job
-  → PUT /wp-json/wc/v3/products/{id} (stock_quantity)
-  → marcar SyncQueue.status = COMPLETED | FAILED
-```
-
-**Web vende → descuenta en el POS:**
-```
-WooCommerce dispara webhook "order.created" / "order.updated"
-  → endpoint POST /webhooks/woocommerce (NestJS) valida firma HMAC
-  → encolar job SyncQueue { direction: WOO_TO_POS, entityType: ORDER }
-  → worker BullMQ consume el job
-  → resuelve productos por wooProductId, decremento atómico de StoreStock
-  → si el pedido web se cancela: reingresa stock (job inverso)
-```
-
-Ambos caminos pasan por la **misma tabla `SyncQueue`** como bitácora e
-idempotencia: nunca se llama a la API externa directamente desde el request
-handler — siempre se encola, para que una caída de WooCommerce no bloquee ni
-demore una venta en el mostrador.
-
-## 2. Colas BullMQ
-
-```ts
-// apps/api/src/sync/queues.ts
-import { Queue } from "bullmq";
-import { redisConnection } from "../redis";
-
-export const wooOutboundQueue = new Queue("woo-outbound", {
-  connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 5,
-    backoff: { type: "exponential", delay: 5_000 }, // 5s, 10s, 20s, 40s, 80s
-    removeOnComplete: 1000,
-    removeOnFail: false, // los fallidos quedan para inspección manual / alerta
-  },
-});
-
-export const wooInboundQueue = new Queue("woo-inbound", {
-  connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 5,
-    backoff: { type: "exponential", delay: 5_000 },
-  },
-});
+Venta confirmada (OrdersService.create) o ajuste manual (StockService.adjust)
+  → tx de Postgres hace commit (stock ya descontado)
+  → WooStockSyncService.enqueueStockSync(...)  [fuera de la tx a propósito]
+      → busca WooCommerceConfig activa + syncStockOutbound=true del local
+      → por cada producto/variante con wooProductId/wooVariantId:
+          crea SyncLog PENDING, encola job "stock-outbound"
+  → WooWorkerService procesa el job → WooGateway.updateStock(...)
+      → PUT /wp-json/wc/v3/products/{id} (o .../variations/{id})
+      → SyncLog → SUCCESS | FAILED (reintenta con backoff exponencial)
 ```
 
-```ts
-// apps/api/src/sync/woo-outbound.processor.ts
-import { Worker } from "bullmq";
-import { prisma } from "@pos/database";
-import { wooClient } from "./woo-client";
+Si el producto vendido es un `BUNDLE`, no se sincroniza el combo (no tiene
+`wooProductId` propio en este diseño) sino cada componente descontado.
 
-export const wooOutboundWorker = new Worker(
-  "woo-outbound",
-  async (job) => {
-    const { syncQueueId } = job.data;
-    const record = await prisma.syncQueue.update({
-      where: { id: syncQueueId },
-      data: { status: "PROCESSING", attempts: { increment: 1 } },
-    });
+`enqueueStockSync` nunca lanza: un fallo acá (Redis caído, Woo inactivo)
+jamás debe poder tumbar una venta de mostrador ya confirmada — solo loggea.
 
-    if (record.entityType === "PRODUCT_STOCK") {
-      const { wooProductId, quantity } = record.payload as {
-        wooProductId: number;
-        quantity: number;
-      };
-      await wooClient.put(`products/${wooProductId}`, {
-        stock_quantity: quantity,
-        manage_stock: true,
-      });
-    }
+## 3. Inbound: WooCommerce → POS (webhooks)
 
-    await prisma.syncQueue.update({
-      where: { id: syncQueueId },
-      data: { status: "COMPLETED", processedAt: new Date() },
-    });
-  },
-  { connection: redisConnection, concurrency: 5 },
-);
-
-wooOutboundWorker.on("failed", async (job, err) => {
-  if (!job) return;
-  await prisma.syncQueue.update({
-    where: { id: job.data.syncQueueId },
-    data: { status: "FAILED", lastError: err.message },
-  });
-  if (job.attemptsMade >= (job.opts.attempts ?? 1)) {
-    // TODO Fase 2: notificar (email/webhook interno) — se agotaron los reintentos
-  }
-});
+```
+WooCommerce dispara order.created / order.updated
+  → POST /webhooks/woocommerce/orders?configId=<id>  (sin JWT)
+  → valida x-wc-webhook-signature (HMAC-SHA256 sobre el body crudo,
+    ver webhook-signature.util.ts) contra el webhookSecret de esa config
+  → responde 401 si la firma no matchea, 200 rápido si matchea
+  → solo status processing/completed: crea SyncLog PENDING + encola
+    "order-inbound"
+  → WooWorkerService: idempotencia (busca un SyncLog SUCCESS previo con el
+    mismo wooOrderId en el payload) → si ya se procesó, no vuelve a tocar
+    stock; si no, resuelve cada line_item por wooProductId/wooVariantId y
+    descuenta StockLevel de la sucursal asignada a esa config — incluso en
+    negativo (una orden web ya pagada no se puede "rechazar" del lado POS;
+    un negativo es sobreventa real que hay que resolver operativamente, no
+    algo para esconder fallando en silencio)
 ```
 
-## 3. Webhook receptor (entrada)
+`configId` en la URL —no un header ni el dominio de origen— es lo que
+identifica tenant + local: es la misma URL que se muestra en
+`/settings/integrations/woocommerce` para pegar en WooCommerce → Ajustes →
+Avanzado → Webhooks. `rawBody: true` en `main.ts` es necesario para poder
+validar el HMAC contra los bytes exactos que WooCommerce firmó.
 
-```ts
-// apps/api/src/sync/woo-webhook.controller.ts
-import { Controller, Post, Req, Headers, HttpCode } from "@nestjs/common";
-import * as crypto from "crypto";
+## 4. Importación / vinculación inicial de catálogo
 
-@Controller("webhooks/woocommerce")
-export class WooWebhookController {
-  @Post("orders")
-  @HttpCode(200) // siempre 200 rápido — WooCommerce reintenta si no responde a tiempo
-  async handleOrderWebhook(
-    @Req() req: RawBodyRequest,
-    @Headers("x-wc-webhook-signature") signature: string,
-    @Headers("x-wc-webhook-source") storeUrl: string,
-  ) {
-    const config = await this.wooConfigService.findBySiteUrl(storeUrl);
-    const expected = crypto
-      .createHmac("sha256", config.webhookSecret)
-      .update(req.rawBody)
-      .digest("base64");
+`POST /integrations/woocommerce/sync-catalog` (`WooCatalogSyncService`):
+pagina `GET /products` de WooCommerce y por cada producto:
 
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      // No lanzar 401 con detalle — solo descartar silenciosamente
-      return { received: false };
-    }
+- Empareja por SKU exacto contra `sku` **o** `barcode` local (WooCommerce no
+  trae un campo "barcode" propio en su REST API estándar — muchas tiendas
+  chicas usan su SKU para eso).
+- Si matchea: setea `wooProductId`/`wooSyncStatus=SYNCED`/`wooLastSyncAt`.
+- Si no matchea y es tipo `simple`: crea un producto `SIMPLE` nuevo en el
+  POS con esos datos.
+- Los productos `variable` sin match local se cuentan como "omitidos" —
+  auto-crear la estructura completa de variantes/atributos desde cero queda
+  fuera de este sprint; si ya existen localmente, sus variaciones también se
+  emparejan por SKU.
 
-    await this.syncQueueService.enqueueInbound({
-      tenantId: config.store.tenantId,
-      entityType: "ORDER",
-      payload: JSON.parse(req.rawBody.toString()),
-    });
+## 5. Cola BullMQ
 
-    return { received: true };
-  }
-}
-```
+Una sola cola `woocommerce-queue` (nombre configurable vía
+`WOO_QUEUE_NAME` — los tests e2e la aíslan con un nombre único por corrida
+para no competir por jobs con el worker de otro `*.e2e-spec.ts` que también
+bootstrapea `AppModule` completo) para ambos sentidos, jobs `stock-outbound`
+y `order-inbound`. 3 reintentos con backoff exponencial (2s, 4s, 8s) y un
+rate limiter configurable (`WOO_RATE_LIMIT_PER_SEC`, default 5/s) para no
+saturar hostings compartidos de WordPress.
 
-Puntos clave:
-- **Responder rápido (200) y procesar async**: el procesamiento real pasa a
-  BullMQ, nunca se hace dentro del handler del webhook — WooCommerce
-  reintenta agresivamente si el endpoint tarda o falla.
-- **Validación HMAC obligatoria** contra `webhookSecret` (guardado por
-  tienda en `WooCommerceConfig`, no compartido entre tenants).
-- **Idempotencia**: antes de aplicar un `ORDER` webhook, verificar si ya
-  existe un `Order.wooOrderId` procesado (WooCommerce puede reenviar el
-  mismo webhook más de una vez).
+## 6. Mock y tests
 
-## 4. Reconciliación periódica
+`WooMockGateway` (activable con `WOO_MOCK=true`, o inyectado directo vía
+`overrideProvider(WOO_GATEWAY)` en tests — mismo patrón que `AfipMockGateway`
+en Sprint 6) simula la REST API de WooCommerce sin tocar la red y expone
+`recordedUpdates` para verificar qué se le "mandó" a WooCommerce. Ver
+`apps/api/test/woocommerce.e2e-spec.ts`: firma HMAC válida/inválida, flujo
+outbound completo (venta → job → mock recibe el PUT), flujo inbound completo
+(webhook → job → stock local descontado) con verificación de idempotencia
+ante reenvíos, y "probar conexión".
 
-Además del pipeline en tiempo real, un **job programado** (BullMQ repeatable
-job, cada 15-30 min) recorre productos con `wooProductId` no nulo y compara
-`StoreStock.quantity` vs stock reportado por WooCommerce, para detectar y
-corregir divergencias (webhook perdido, WooCommerce caído durante una venta,
-etc.). Loggea diferencias > 0 como alerta operativa, no las corrige en
-silencio si superan un umbral configurable (evita enmascarar bugs).
+## 7. Extensibilidad a otras plataformas
 
-## 5. Extensibilidad a Tiendanube
-
-```ts
-interface EcommerceConnector {
-  updateStock(remoteProductId: string, quantity: number): Promise<void>;
-  parseInboundOrder(payload: unknown): NormalizedOrder;
-  verifyWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean;
-}
-```
-
-`WooCommerceConnector` implementa esta interfaz hoy; `TiendanubeConnector`
-se agrega en Fase 2+ sin tocar `SyncQueue`, los workers ni el modelo de
-datos — solo el mapeo de payload y auth (Tiendanube usa OAuth2, no
-consumer key/secret).
+`WooGateway` (`woo-gateway.interface.ts`) es la única superficie que sabe
+hablar HTTP con WooCommerce específicamente — `WooStockSyncService`,
+`WooCatalogSyncService` y `WooWorkerService` no conocen detalles de su REST
+API. Un conector para otra plataforma (Tiendanube, etc.) implementaría la
+misma interfaz sin tocar colas, `SyncLog` ni el modelo de datos.

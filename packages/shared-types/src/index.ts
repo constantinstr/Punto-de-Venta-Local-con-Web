@@ -65,6 +65,8 @@ export interface BundleItem {
   quantity: string;
 }
 
+export type WooSyncStatus = "SYNCED" | "PENDING" | "ERROR" | "IGNORED";
+
 export interface Product {
   id: string;
   categoryId: string | null;
@@ -81,6 +83,8 @@ export interface Product {
   isActive: boolean;
   variants: ProductVariant[];
   bundleComponents?: BundleItem[];
+  wooProductId: number | null;
+  wooSyncStatus: WooSyncStatus;
 }
 
 export interface StockEntryInput {
@@ -411,4 +415,68 @@ export interface CreateInvoiceInput {
   orderId: string;
   customerId?: string;
   requestedType?: RequestedInvoiceType;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SINCRONIZACIÓN WOOCOMMERCE (Sprint 7)
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface WooCommerceConfig {
+  id: string;
+  storeId: string;
+  apiUrl: string;
+  syncStockOutbound: boolean;
+  syncStockInbound: boolean;
+  isActive: boolean;
+  lastSyncAt: string | null;
+  webhookUrl: string;
+}
+
+export interface CreateWooConfigInput {
+  storeId: string;
+  apiUrl: string;
+  consumerKey: string;
+  consumerSecret: string;
+  webhookSecret: string;
+  syncStockOutbound?: boolean;
+  syncStockInbound?: boolean;
+  isActive?: boolean;
+}
+
+export interface UpdateWooConfigInput {
+  apiUrl?: string;
+  consumerKey?: string;
+  consumerSecret?: string;
+  webhookSecret?: string;
+  syncStockOutbound?: boolean;
+  syncStockInbound?: boolean;
+  isActive?: boolean;
+}
+
+export type SyncEntityType = "PRODUCT" | "STOCK" | "ORDER";
+export type SyncDirection = "OUTBOUND_TO_WOO" | "INBOUND_FROM_WOO";
+export type SyncStatus = "PENDING" | "SUCCESS" | "FAILED";
+
+export interface SyncLog {
+  id: string;
+  entityType: SyncEntityType;
+  direction: SyncDirection;
+  status: SyncStatus;
+  payload: Record<string, unknown>;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  storeName?: string;
+  message?: string;
+}
+
+export interface CatalogSyncSummary {
+  scanned: number;
+  matched: number;
+  created: number;
+  skipped: number;
+  errors: number;
 }

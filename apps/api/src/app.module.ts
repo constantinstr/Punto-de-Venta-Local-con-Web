@@ -16,6 +16,7 @@ import { OrdersModule } from './orders/orders.module';
 import { FiscalConfigModule } from './fiscal-config/fiscal-config.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { CustomersModule } from './customers/customers.module';
+import { WooCommerceModule } from './woocommerce/woocommerce.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { CustomersModule } from './customers/customers.module';
     FiscalConfigModule,
     InvoicesModule,
     CustomersModule,
+    WooCommerceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
