@@ -1,3 +1,7 @@
+# Infra de desarrollo local — SOLO Postgres y Redis, expuestos al host para
+# que apps/api y apps/pos-web corran nativos (pnpm dev) con hot reload en
+# vez de dentro de un contenedor. Para el stack completo containerizado
+# (api + pos-web con build multi-stage) ver docker-compose.prod.yml.
 services:
   postgres:
     image: postgres:16-alpine

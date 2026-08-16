@@ -35,6 +35,7 @@ export function CheckoutModal({
   storeId,
   store,
   cashShiftId,
+  isOnline,
   onNewSale,
   onClose,
 }: {
@@ -43,6 +44,7 @@ export function CheckoutModal({
   storeId: string;
   store: Store;
   cashShiftId: string;
+  isOnline: boolean;
   onNewSale: () => void;
   onClose: () => void;
 }) {
@@ -70,8 +72,12 @@ export function CheckoutModal({
 
   // Si el local no tiene fiscal config cargada (o cambió de local), no hay
   // forma de emitir Factura A/B — se cae a Ticket para no dejar seleccionada
-  // una opción que el servidor va a rechazar.
+  // una opción que el servidor va a rechazar. Reset intencional de estado
+  // ante un cambio externo (fiscalConfig), no un valor derivable en el
+  // render: fiscalType sigue siendo la fuente de verdad que el usuario
+  // controla vía los radios de abajo.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!fiscalConfig && fiscalType !== "TICKET_X") setFiscalType("TICKET_X");
   }, [fiscalConfig, fiscalType]);
 
@@ -119,6 +125,14 @@ export function CheckoutModal({
 
   async function handleConfirm() {
     setError(null);
+    // Defensa en profundidad: el botón ya queda deshabilitado sin
+    // conexión, pero esto cubre el caso borde de perder la conexión justo
+    // entre el click y el request — nunca se manda un cobro a medias ni se
+    // deja al cajero pensando que la venta se registró sin saberlo.
+    if (!isOnline) {
+      setError("Sin conexión al servidor — no se puede registrar el cobro. Esperá a reconectar e intentá de nuevo.");
+      return;
+    }
     if (fiscalType === "FACTURA_A" && !CUIT_PATTERN.test(cuit)) {
       setError("Ingresá un CUIT válido (11 dígitos, sin guiones)");
       return;
@@ -386,6 +400,11 @@ export function CheckoutModal({
             El vuelto solo puede darse en efectivo — ajustá el monto para que no supere el total.
           </p>
         )}
+        {!isOnline && (
+          <p className="rounded bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+            Sin conexión al servidor: el cobro queda bloqueado para no registrar una venta a medias. Esperá a reconectar.
+          </p>
+        )}
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
@@ -396,10 +415,10 @@ export function CheckoutModal({
             ref={confirmRef}
             type="button"
             onClick={handleConfirm}
-            disabled={!validation.valid || createOrder.isPending}
+            disabled={!validation.valid || createOrder.isPending || !isOnline}
             className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            {createOrder.isPending ? "Registrando…" : "Confirmar cobro"}
+            {createOrder.isPending ? "Registrando…" : !isOnline ? "Sin conexión" : "Confirmar cobro"}
           </button>
         </div>
       </div>

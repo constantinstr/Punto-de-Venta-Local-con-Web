@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePosCatalog, type CatalogProduct, type SellableUnit } from "@/hooks/usePosCatalog";
 import { useCategories, useStores } from "@/hooks/useCatalog";
 import { useCashRegisters, useCurrentShift } from "@/hooks/useCashShifts";
+import { NetworkStatusBanner } from "@/components/pos/NetworkStatusBanner";
 import { useCartStore } from "@/stores/useCartStore";
 import { useCashSessionStore } from "@/stores/useCashSessionStore";
 import { computeCartTotals, computeOrderItemsPayload, cartHasStockIssues } from "@/stores/cart-calculations";
@@ -60,7 +62,7 @@ export default function PosPage() {
   const [cashControlOpen, setCashControlOpen] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  const online = useNetworkStatus();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,20 +79,10 @@ export default function PosPage() {
       (currentShift.userId === user?.id || ["MANAGER", "ADMIN", "OWNER"].includes(user?.role ?? "")),
   );
 
-  // Reloj + estado de red de la barra superior.
+  // Reloj de la barra superior — el estado de red lo maneja useNetworkStatus.
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
-  }, []);
-  useEffect(() => {
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
   }, []);
 
   // Debounce del buscador manual (la grilla filtra sobre el catálogo ya
@@ -301,7 +293,15 @@ export default function PosPage() {
           <span className="text-zinc-400">{user.fullName}</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className={online ? "text-green-600" : "text-red-600"}>{online ? "● Online" : "● Offline"}</span>
+          {catalog.usingCachedSnapshot && (
+            <span
+              className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+              title="No se pudo actualizar el catálogo desde el servidor — mostrando la última copia guardada en este dispositivo"
+            >
+              Catálogo guardado (sin actualizar)
+            </span>
+          )}
+          <NetworkStatusBanner />
           <span className="font-mono tabular-nums">{now.toLocaleTimeString("es-AR")}</span>
         </div>
       </header>
@@ -410,6 +410,7 @@ export default function PosPage() {
           storeId={storeId}
           store={currentStore}
           cashShiftId={currentShift.id}
+          isOnline={online}
           onNewSale={() => {
             clearCart();
             setCheckoutOpen(false);

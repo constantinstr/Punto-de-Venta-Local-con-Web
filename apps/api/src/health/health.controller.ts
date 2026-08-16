@@ -1,47 +1,40 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
-import { prisma } from '@pos/database';
-import Redis from 'ioredis';
-import { getRedisConnection } from '../redis/redis-connection';
+import { Controller, Get } from '@nestjs/common';
+import {
+  HealthCheck,
+  HealthCheckService,
+  MemoryHealthIndicator,
+  type HealthIndicatorResult,
+} from '@nestjs/terminus';
+import { PrismaHealthIndicator } from './prisma.health';
+import { RedisHealthIndicator } from './redis.health';
+
+const HEAP_THRESHOLD_BYTES = 300 * 1024 * 1024;
+const RSS_THRESHOLD_BYTES = 400 * 1024 * 1024;
 
 @Controller('health')
 export class HealthController {
+  constructor(
+    private readonly health: HealthCheckService,
+    private readonly prismaIndicator: PrismaHealthIndicator,
+    private readonly redisIndicator: RedisHealthIndicator,
+    private readonly memory: MemoryHealthIndicator,
+  ) {}
+
   @Get()
-  async check() {
-    const [dbOk, redisOk] = await Promise.all([
-      this.checkDb(),
-      this.checkRedis(),
+  @HealthCheck()
+  check() {
+    return this.health.check([
+      () => this.prismaIndicator.isHealthy('database'),
+      () => this.redisIndicator.isHealthy('redis'),
+      () => this.memory.checkHeap('memory_heap', HEAP_THRESHOLD_BYTES),
+      () => this.memory.checkRSS('memory_rss', RSS_THRESHOLD_BYTES),
+      () => this.uptime(),
     ]);
-
-    if (!dbOk || !redisOk) {
-      throw new ServiceUnavailableException({ db: dbOk, redis: redisOk });
-    }
-
-    return { status: 'ok', db: dbOk, redis: redisOk };
   }
 
-  private async checkDb(): Promise<boolean> {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private async checkRedis(): Promise<boolean> {
-    const client = new Redis({
-      ...getRedisConnection(),
-      lazyConnect: true,
-      maxRetriesPerRequest: 1,
+  private uptime(): Promise<HealthIndicatorResult> {
+    return Promise.resolve({
+      process: { status: 'up', uptimeSeconds: Math.round(process.uptime()) },
     });
-    try {
-      await client.connect();
-      await client.ping();
-      return true;
-    } catch {
-      return false;
-    } finally {
-      client.disconnect();
-    }
   }
 }

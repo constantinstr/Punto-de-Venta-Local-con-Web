@@ -1,0 +1,88 @@
+# Stack completo containerizado para producción: postgres, redis, api y
+# pos-web. No hay un servicio de worker separado a propósito — los jobs de
+# BullMQ (AFIP, WooCommerce) corren embebidos en el mismo proceso de `api`
+# (ver apps/api/src/woocommerce/woo-worker.service.ts), no como un proceso
+# aparte, así que no hace falta un contenedor extra para eso.
+#
+# `api` corre `prisma migrate deploy` solo, vía su propio entrypoint (ver
+# apps/api/docker-entrypoint.sh y apps/api/Dockerfile), antes de levantar
+# el servidor — no hace falta un paso manual ni un servicio de migración
+# aparte.
+#
+# Uso:
+#   cp .env.example .env   # completar secretos/URLs reales
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pos}
+      POSTGRES_DB: ${POSTGRES_DB:-pos_saas}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pos} -d ${POSTGRES_DB:-pos_saas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pos}:${POSTGRES_PASSWORD:-pos}@postgres:5432/${POSTGRES_DB:-pos_saas}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?falta JWT_ACCESS_SECRET en .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?falta JWT_REFRESH_SECRET en .env}
+      PORT: 3001
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      AFIP_MOCK: ${AFIP_MOCK:-false}
+      WOO_MOCK: ${WOO_MOCK:-false}
+      WOO_RATE_LIMIT_PER_SEC: ${WOO_RATE_LIMIT_PER_SEC:-5}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  pos-web:
+    build:
+      context: .
+      dockerfile: apps/pos-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  redis_data:

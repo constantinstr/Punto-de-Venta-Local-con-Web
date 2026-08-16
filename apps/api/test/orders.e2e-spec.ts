@@ -31,7 +31,7 @@ interface OrderResponseBody {
 // este proyecto — no se limpia después (dev/CI descartable, nunca prod).
 describe('Orders (Sprint 5) — e2e', () => {
   let app: INestApplication<App>;
-  const suffix = Date.now();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   async function registerTenantWithOpenShift(name: string, email: string) {
     const res = await request(app.getHttpServer())

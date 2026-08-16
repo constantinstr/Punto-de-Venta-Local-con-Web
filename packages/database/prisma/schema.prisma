@@ -179,6 +179,7 @@ model User {
   orders        Order[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
 
   @@index([tenantId])
 }
@@ -638,4 +639,28 @@ model SyncLog {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SEGURIDAD (Sprint 9)
+// ──────────────────────────────────────────────────────────────────────────
+
+// Sin tenantId/RLS a propósito — mismo motivo que el bypass de login sobre
+// User (ver withAuthLookupContext): rotar/revocar un refresh token pasa por
+// buscarlo por tokenHash, y SUPERADMIN (sin tenant) también emite/rota
+// tokens. tokenHash es SHA-256 del JWT (no bcrypt): necesita ser una
+// búsqueda exacta por índice, no una comparación 1 a 1 contra cada fila —
+// el propio JWT ya es criptográficamente aleatorio, así que un hash rápido
+// alcanza para no guardar el token en texto plano sin pagar el costo de
+// bcrypt en cada refresh.
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

@@ -23,7 +23,7 @@ interface StockRow {
 // una base de dev/CI descartable, nunca producción.
 describe('Catálogo (Sprint 2) — e2e', () => {
   let app: INestApplication<App>;
-  const suffix = Date.now();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   async function registerTenant(name: string, email: string) {
     const res = await request(app.getHttpServer())

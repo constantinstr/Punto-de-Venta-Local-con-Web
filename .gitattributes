@@ -1,0 +1,6 @@
+# Los scripts que corren dentro de contenedores Linux (Alpine) necesitan
+# LF sí o sí — con CRLF, /bin/sh los rechaza directo con "bad interpreter".
+# Sin esto, autocrlf=true en Windows los convertiría a CRLF al clonar.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf

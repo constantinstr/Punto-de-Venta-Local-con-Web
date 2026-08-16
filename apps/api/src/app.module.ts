@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { QueueDemoModule } from './queue-demo/queue-demo.module';
@@ -22,6 +25,11 @@ import { ReportsModule } from './reports/reports.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Límite estándar de alta concurrencia para el resto de la API (POS
+    // general) — las rutas de auth y el webhook de WooCommerce lo
+    // sobreescriben puntualmente con @Throttle() a límites más estrictos
+    // (ver auth.controller.ts y woo-webhook.controller.ts).
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
     HealthModule,
     QueueDemoModule,
     AuthModule,
@@ -40,6 +48,6 @@ import { ReportsModule } from './reports/reports.module';
     ReportsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule {}

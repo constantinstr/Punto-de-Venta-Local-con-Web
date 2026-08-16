@@ -23,6 +23,19 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
+  it('/health (GET) reporta Postgres, Redis, memoria y uptime del proceso (Sprint 9)', async () => {
+    const res = await request(app.getHttpServer()).get('/health').expect(200);
+    const body = res.body as {
+      status: string;
+      info: Record<string, { status: string }>;
+    };
+    expect(body.status).toBe('ok');
+    expect(body.info.database.status).toBe('up');
+    expect(body.info.redis.status).toBe('up');
+    expect(body.info.memory_heap.status).toBe('up');
+    expect(body.info.process.status).toBe('up');
+  });
+
   afterEach(async () => {
     await app.close();
   });

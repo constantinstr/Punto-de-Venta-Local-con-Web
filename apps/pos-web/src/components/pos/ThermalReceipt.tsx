@@ -53,6 +53,7 @@ export function ThermalReceipt({
 
   useEffect(() => {
     if (!invoice.afipQrUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQrDataUrl(null);
       return;
     }

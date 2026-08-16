@@ -1,6 +1,7 @@
-import { useMemo } from "react";
-import type { ProductType, VatCondition } from "@pos/shared-types";
+import { useEffect, useMemo } from "react";
+import type { Product, ProductType, StockRow, VatCondition } from "@pos/shared-types";
 import { useProducts, useStockLevels } from "./useCatalog";
+import { loadCatalogSnapshot, saveCatalogSnapshot } from "@/lib/catalog-cache";
 
 // Una unidad vendible: un producto SIMPLE/BUNDLE, o una variante puntual de
 // un producto VARIABLE. Es la forma que usa tanto la grilla como la
@@ -35,8 +36,25 @@ export interface CatalogProduct {
 }
 
 export function usePosCatalog(storeId: string | undefined) {
-  const { data: products, isLoading: loadingProducts } = useProducts({});
-  const { data: stockRows, isLoading: loadingStock } = useStockLevels(storeId);
+  const { data: liveProducts, isLoading: loadingProducts, isError: productsError } = useProducts({});
+  const { data: liveStockRows, isLoading: loadingStock, isError: stockError } = useStockLevels(storeId);
+
+  // Resiliencia offline/microcortes (Sprint 9): si la carga en vivo falló
+  // pero hay un snapshot guardado de este local, se arma el catálogo con
+  // eso en vez de dejar la grilla vacía — vender con datos de hace unos
+  // minutos es mejor que no poder vender nada. Cuando la carga en vivo SÍ
+  // funciona, se persiste como snapshot nuevo para el próximo corte.
+  const hasLiveFailure = productsError || stockError;
+  const cachedSnapshot = hasLiveFailure && storeId ? loadCatalogSnapshot(storeId) : null;
+  const usingCachedSnapshot = Boolean(cachedSnapshot);
+  const products: Product[] | undefined = liveProducts ?? cachedSnapshot?.products;
+  const stockRows: StockRow[] | undefined = liveStockRows ?? cachedSnapshot?.stockRows;
+
+  useEffect(() => {
+    if (storeId && liveProducts && liveStockRows && !productsError && !stockError) {
+      saveCatalogSnapshot(storeId, liveProducts, liveStockRows);
+    }
+  }, [storeId, liveProducts, liveStockRows, productsError, stockError]);
 
   const catalog = useMemo(() => {
     if (!products) return { products: [] as CatalogProduct[], units: [] as SellableUnit[] };
@@ -124,5 +142,10 @@ export function usePosCatalog(storeId: string | undefined) {
     return catalog.units.find((u) => u.barcode === barcode);
   }
 
-  return { ...catalog, findByBarcode, isLoading: loadingProducts || loadingStock };
+  return {
+    ...catalog,
+    findByBarcode,
+    isLoading: loadingProducts || loadingStock,
+    usingCachedSnapshot,
+  };
 }

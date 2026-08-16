@@ -22,8 +22,10 @@ packages/
 - Node.js ≥ 20
 - pnpm (`npm install -g pnpm` si no lo tenés)
 - Postgres + Redis, por alguna de estas dos vías:
-  - **Docker** (`docker compose up -d`, ver `docker-compose.yml`) — requiere Docker
-    Desktop con backend WSL2 funcionando.
+  - **Docker** (`docker compose -f docker-compose.dev.yml up -d`) — requiere
+    Docker Desktop con backend WSL2 funcionando. (Para levantar el stack
+    completo containerizado, api y pos-web incluidos, ver
+    `docker-compose.prod.yml`.)
   - **Servicios nativos de Windows** (lo usado en este entorno, porque WSL2 no
     estaba disponible): PostgreSQL 17 (`winget install PostgreSQL.PostgreSQL.17`)
     y Memurai Developer (`winget install Memurai.MemuraiDeveloper`), compatible
@@ -46,7 +48,7 @@ Si vas por la vía nativa, la base y el rol ya deben existir antes de migrar:
 
 ```bash
 cp .env.example .env          # ajustar si hace falta
-# docker compose up -d        # alternativa si usás Docker en vez de servicios nativos
+# docker compose -f docker-compose.dev.yml up -d   # alternativa si usás Docker en vez de servicios nativos
 pnpm install
 
 # construir los paquetes compartidos antes de levantar las apps

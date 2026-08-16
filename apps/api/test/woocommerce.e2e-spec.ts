@@ -44,7 +44,7 @@ interface StockRowBody {
 describe('WooCommerce sync (Sprint 7) — e2e', () => {
   let app: INestApplication<App>;
   let wooGateway: WooMockGateway;
-  const suffix = Date.now();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   async function waitFor<T>(
     fn: () => T | undefined | Promise<T | undefined>,

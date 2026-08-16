@@ -37,7 +37,7 @@ interface InvoiceResponseBody {
 // requieren certificados reales de AFIP para correr esta suite.
 describe('Invoices / AFIP (Sprint 6) — e2e', () => {
   let app: INestApplication<App>;
-  const suffix = Date.now();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   async function registerTenantWithOpenShift(name: string, email: string) {
     const res = await request(app.getHttpServer())

@@ -10,6 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { withTenantContext } from '@pos/database';
 import { verifyWooWebhookSignature } from './webhook-signature.util';
@@ -38,8 +39,14 @@ export class WooWebhookController {
     private readonly syncLogService: SyncLogService,
   ) {}
 
+  // Endpoint público sin JWT -> el límite por defecto (300/min, ver
+  // ThrottlerModule en app.module.ts) igual aplicaría por IP, pero acá se
+  // pisa con uno explícito y más bajo: WooCommerce puede reintentar
+  // agresivo ante una falla propia, y este endpoint no debería absorber eso
+  // como si fuera tráfico normal de la API.
   @Post('orders')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async handleOrderWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('x-wc-webhook-signature') signature: string | undefined,
