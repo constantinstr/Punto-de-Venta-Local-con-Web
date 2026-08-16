@@ -181,9 +181,14 @@ async function main() {
       ],
     });
 
+    const cashRegister = await tx.cashRegister.create({
+      data: { tenantId: tenant.id, storeId: store.id, name: "Caja 1" },
+    });
+
     console.log(`Sembrado OK — tenant "${tenant.name}" (${tenant.id}), local "${store.name}" (${store.id}).`);
     console.log(`Login: demo@pos.test / demo12345 (OWNER) — cajero@pos.test / cajero1234 (CASHIER)`);
     console.log(`Combo "${combo.name}" disponible = min(stock Termo, stock Bombilla, stock Mate Verde) = 8 unidades.`);
+    console.log(`Caja lista para abrir turno: "${cashRegister.name}" (${cashRegister.id}).`);
   });
 }
 

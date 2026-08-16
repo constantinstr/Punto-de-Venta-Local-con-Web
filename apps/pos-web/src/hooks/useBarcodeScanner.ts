@@ -29,8 +29,8 @@ export function useBarcodeScanner({
     }
 
     function handleKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("[data-no-scan]")) return;
+      const target = e.target;
+      if (target instanceof Element && target.closest("[data-no-scan]")) return;
 
       const now = performance.now();
       const delta = now - lastKeyTimeRef.current;

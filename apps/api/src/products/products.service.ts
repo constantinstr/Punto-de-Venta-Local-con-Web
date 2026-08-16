@@ -295,7 +295,9 @@ export class ProductsService {
       trackStock: boolean;
       name: string;
       sku: string;
+      barcode: string | null;
       price: Prisma.Decimal;
+      vatCondition: string;
     },
     variant: {
       id: string;
@@ -316,9 +318,11 @@ export class ProductsService {
       variantId: variant?.id ?? null,
       name: product.name,
       sku: variant?.sku ?? product.sku,
-      barcode: variant?.barcode ?? null,
+      barcode: variant?.barcode ?? product.barcode,
       attributes: variant?.attributes ?? null,
       price: Number(variant?.price ?? product.price),
+      vatCondition: product.vatCondition,
+      productType: product.type,
       availableStock: stock.quantity,
       isUnlimitedStock: stock.isUnlimited,
     };

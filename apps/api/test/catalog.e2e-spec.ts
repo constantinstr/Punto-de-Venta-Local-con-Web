@@ -251,4 +251,50 @@ describe('Catálogo (Sprint 2) — e2e', () => {
         .expect(400);
     });
   });
+
+  describe('Buscador de mostrador (pos-search)', () => {
+    it('devuelve barcode, vatCondition y productType del producto (no solo de la variante)', async () => {
+      const tenant = await registerTenant(
+        'Tenant PosSearch',
+        `possearch-${suffix}@test.com`,
+      );
+      const auth = { Authorization: `Bearer ${tenant.token}` };
+
+      const productRes = await request(app.getHttpServer())
+        .post('/products')
+        .set(auth)
+        .send({
+          sku: `PS-${suffix}`,
+          name: 'Producto Pos Search',
+          barcode: `PS-BARCODE-${suffix}`,
+          type: 'SIMPLE',
+          costPrice: 50,
+          price: 100,
+          vatCondition: 'EXENTO',
+          initialStock: [{ storeId: tenant.storeId, quantity: 7 }],
+        })
+        .expect(201);
+      const product = productRes.body as IdResponseBody;
+
+      const searchRes = await request(app.getHttpServer())
+        .get(
+          `/products/pos-search?q=PS-BARCODE-${suffix}&storeId=${tenant.storeId}`,
+        )
+        .set(auth)
+        .expect(200);
+      const [result] = searchRes.body as {
+        productId: string;
+        barcode: string | null;
+        vatCondition: string;
+        productType: string;
+        availableStock: number;
+      }[];
+
+      expect(result.productId).toBe(product.id);
+      expect(result.barcode).toBe(`PS-BARCODE-${suffix}`);
+      expect(result.vatCondition).toBe('EXENTO');
+      expect(result.productType).toBe('SIMPLE');
+      expect(result.availableStock).toBe(7);
+    });
+  });
 });

@@ -150,6 +150,8 @@ export interface PosSearchResult {
   barcode: string | null;
   attributes: Record<string, string> | null;
   price: number;
+  vatCondition: VatCondition;
+  productType: ProductType;
   availableStock: number;
   isUnlimitedStock: boolean;
 }
@@ -161,4 +163,80 @@ export interface AdjustStockInput {
   delta?: number;
   absoluteQuantity?: number;
   reason: string;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// CAJA (Sprint 4)
+// ──────────────────────────────────────────────────────────────────────────
+
+export type CashRegisterStatus = "ACTIVE" | "INACTIVE";
+export type CashShiftStatus = "OPEN" | "CLOSED";
+export type CashMovementType = "INFLOW" | "OUTFLOW";
+
+export interface CashRegister {
+  id: string;
+  storeId: string;
+  name: string;
+  status: CashRegisterStatus;
+}
+
+export interface CashShiftUser {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+export interface CashShift {
+  id: string;
+  storeId: string;
+  cashRegisterId: string;
+  cashRegister: CashRegister;
+  userId: string;
+  user: CashShiftUser;
+  initialAmount: string;
+  actualCash: string | null;
+  expectedCash: string | null;
+  difference: string | null;
+  notes: string | null;
+  status: CashShiftStatus;
+  openedAt: string;
+  closedAt: string | null;
+  movements?: CashMovement[];
+}
+
+export interface CashMovement {
+  id: string;
+  cashShiftId: string;
+  userId: string;
+  user?: { id: string; fullName: string };
+  type: CashMovementType;
+  amount: string;
+  reason: string;
+  createdAt: string;
+}
+
+export interface CashShiftSummary {
+  cashShiftId: string;
+  status: CashShiftStatus;
+  initialAmount: number;
+  totalInflows: number;
+  totalOutflows: number;
+  cashSalesTotal: number;
+  expectedCash: number;
+}
+
+export interface OpenShiftInput {
+  cashRegisterId: string;
+  initialAmount: number;
+}
+
+export interface CreateMovementInput {
+  type: CashMovementType;
+  amount: number;
+  reason: string;
+}
+
+export interface CloseShiftInput {
+  actualCash: number;
+  notes?: string;
 }

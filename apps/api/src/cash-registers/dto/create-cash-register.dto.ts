@@ -1,0 +1,11 @@
+import { IsString, MinLength } from 'class-validator';
+
+export class CreateCashRegisterDto {
+  @IsString()
+  @MinLength(1)
+  storeId!: string;
+
+  @IsString()
+  @MinLength(1)
+  name!: string;
+}

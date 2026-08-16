@@ -58,14 +58,19 @@ enum PaymentMethod {
   ACCOUNT_CREDIT
 }
 
+enum CashRegisterStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum CashShiftStatus {
   OPEN
   CLOSED
 }
 
 enum CashMovementType {
-  INCOME
-  EXPENSE
+  INFLOW
+  OUTFLOW
 }
 
 enum InvoiceType {
@@ -123,23 +128,27 @@ model Tenant {
   products        Product[]
   productVariants ProductVariant[]
   stockLevels     StockLevel[]
+  cashRegisters   CashRegister[]
+  cashShifts      CashShift[]
+  cashMovements   CashMovement[]
   customers       Customer[]
   syncQueue       SyncQueue[]
 }
 
 model User {
-  id           String      @id @default(cuid())
-  tenantId     String?
-  tenant       Tenant?     @relation(fields: [tenantId], references: [id])
-  email        String      @unique
-  passwordHash String
-  fullName     String
-  role         UserRole    @default(CASHIER)
-  isActive     Boolean     @default(true)
-  storeAccess  Store[]     @relation("UserStores")
-  cashShifts   CashShift[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id            String         @id @default(cuid())
+  tenantId      String?
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id])
+  email         String         @unique
+  passwordHash  String
+  fullName      String
+  role          UserRole       @default(CASHIER)
+  isActive      Boolean        @default(true)
+  storeAccess   Store[]        @relation("UserStores")
+  cashShifts    CashShift[]
+  cashMovements CashMovement[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([tenantId])
 }
@@ -154,6 +163,7 @@ model Store {
   afipCredential    AfipCredential?
   wooCommerceConfig WooCommerceConfig?
   cashRegisters     CashRegister[]
+  cashShifts        CashShift[]
   stockLevels       StockLevel[]
   orders            Order[]
   users             User[]             @relation("UserStores")
@@ -168,46 +178,63 @@ model Store {
 // ──────────────────────────────────────────────────────────────────────────
 
 model CashRegister {
-  id        String      @id @default(cuid())
+  id        String             @id @default(cuid())
+  tenantId  String
+  tenant    Tenant             @relation(fields: [tenantId], references: [id])
   storeId   String
-  store     Store       @relation(fields: [storeId], references: [id])
+  store     Store              @relation(fields: [storeId], references: [id])
   name      String
-  isActive  Boolean     @default(true)
+  status    CashRegisterStatus @default(ACTIVE)
   shifts    CashShift[]
-  createdAt DateTime    @default(now())
+  createdAt DateTime           @default(now())
 
+  @@index([tenantId])
   @@index([storeId])
 }
 
+// Solo puede existir un CashShift con status=OPEN por cashRegisterId a la
+// vez — se aplica con un índice único parcial en Postgres (no expresable en
+// schema.prisma), ver prisma/migrations/..._cash_shifts.
 model CashShift {
   id             String          @id @default(cuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  storeId        String
+  store          Store           @relation(fields: [storeId], references: [id])
   cashRegisterId String
   cashRegister   CashRegister    @relation(fields: [cashRegisterId], references: [id])
   userId         String
   user           User            @relation(fields: [userId], references: [id])
-  openingAmount  Decimal         @db.Decimal(12, 2)
-  closingAmount  Decimal?        @db.Decimal(12, 2)
-  expectedAmount Decimal?        @db.Decimal(12, 2)
+  initialAmount  Decimal         @db.Decimal(12, 2)
+  actualCash     Decimal?        @db.Decimal(12, 2)
+  expectedCash   Decimal?        @db.Decimal(12, 2)
   difference     Decimal?        @db.Decimal(12, 2)
+  notes          String?
   status         CashShiftStatus @default(OPEN)
   openedAt       DateTime        @default(now())
   closedAt       DateTime?
   movements      CashMovement[]
   orders         Order[]
 
+  @@index([tenantId])
   @@index([cashRegisterId])
   @@index([userId])
 }
 
 model CashMovement {
   id          String           @id @default(cuid())
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
   cashShiftId String
   cashShift   CashShift        @relation(fields: [cashShiftId], references: [id])
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
   type        CashMovementType
   amount      Decimal          @db.Decimal(12, 2)
   reason      String
   createdAt   DateTime         @default(now())
 
+  @@index([tenantId])
   @@index([cashShiftId])
 }
 

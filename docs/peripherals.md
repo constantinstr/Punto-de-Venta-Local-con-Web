@@ -49,8 +49,10 @@ export function useBarcodeScanner({
     }
 
     function handleKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("[data-no-scan]")) return; // input de texto libre, no interceptar
+      const target = e.target;
+      // instanceof Element (no solo un cast) porque e.target puede ser
+      // document/window en algunos casos, y esos no tienen .closest().
+      if (target instanceof Element && target.closest("[data-no-scan]")) return;
 
       const now = performance.now();
       const delta = now - lastKeyTimeRef.current;

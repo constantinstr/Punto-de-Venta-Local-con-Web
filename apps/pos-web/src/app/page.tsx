@@ -37,6 +37,9 @@ export default function Home() {
               </button>
             </div>
             <div className="flex gap-4">
+              <Link href="/pos" className="underline">
+                Punto de venta
+              </Link>
               <Link href="/catalog" className="underline">
                 Catálogo
               </Link>
