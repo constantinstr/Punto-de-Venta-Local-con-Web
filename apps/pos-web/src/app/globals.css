@@ -25,19 +25,24 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Impresión de comprobantes (Sprint 6): #thermal-receipt (ver
-   components/pos/ThermalReceipt.tsx) es el único nodo visible al imprimir —
-   todo lo demás (el POS, los modales) se oculta acá en vez de armar una
-   ventana de impresión aparte. */
+/* Impresión de comprobantes (Sprint 6) y de arqueos de caja (Sprint 8):
+   #thermal-receipt (components/pos/ThermalReceipt.tsx) y
+   #shift-close-receipt (components/reports/ShiftDetailModal.tsx) son los
+   únicos nodos visibles al imprimir — todo lo demás (el POS, los modales,
+   la página de reportes) se oculta acá en vez de armar una ventana de
+   impresión aparte. */
 @media print {
   body * {
     visibility: hidden;
   }
   #thermal-receipt,
-  #thermal-receipt * {
+  #thermal-receipt *,
+  #shift-close-receipt,
+  #shift-close-receipt * {
     visibility: visible;
   }
-  #thermal-receipt {
+  #thermal-receipt,
+  #shift-close-receipt {
     position: absolute;
     left: 0;
     top: 0;

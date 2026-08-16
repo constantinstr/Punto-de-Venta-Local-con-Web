@@ -480,3 +480,85 @@ export interface CatalogSyncSummary {
   skipped: number;
   errors: number;
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// REPORTES Y MÉTRICAS (Sprint 8)
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ReportRangeInput {
+  from: string;
+  to: string;
+  storeId?: string;
+}
+
+export interface VatBreakdownEntry {
+  rate: number;
+  amount: number;
+}
+
+export interface SalesSummaryReport {
+  from: string;
+  to: string;
+  grossRevenue: number;
+  netRevenue: number;
+  vatByRate: VatBreakdownEntry[];
+  totalDiscounts: number;
+  totalCost: number;
+  grossMargin: number;
+  averageTicket: number;
+  completedCount: number;
+  cancelledCount: number;
+  timeSeries: { date: string; grossRevenue: number; ticketCount: number }[];
+}
+
+export interface PaymentMethodBreakdownEntry {
+  method: PaymentMethod;
+  count: number;
+  total: number;
+  percentage: number;
+}
+
+export interface PaymentMethodsReport {
+  from: string;
+  to: string;
+  breakdown: PaymentMethodBreakdownEntry[];
+  grandTotal: number;
+}
+
+export interface TopProductEntry {
+  productId: string;
+  variantId: string | null;
+  name: string;
+  sku: string;
+  unitsSold: number;
+  revenue: number;
+  cost: number;
+  margin: number;
+  posUnits: number;
+  onlineUnits: number;
+}
+
+export interface TopProductsReport {
+  from: string;
+  to: string;
+  products: TopProductEntry[];
+}
+
+export interface CashShiftHistoryEntry {
+  id: string;
+  storeId: string;
+  cashRegisterName: string;
+  userFullName: string;
+  openedAt: string;
+  closedAt: string | null;
+  initialAmount: number;
+  expectedCash: number | null;
+  actualCash: number | null;
+  difference: number | null;
+}
+
+export interface CashShiftsHistoryReport {
+  from: string;
+  to: string;
+  shifts: CashShiftHistoryEntry[];
+}

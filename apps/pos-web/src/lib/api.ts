@@ -58,3 +58,22 @@ export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { method: "DELETE", headers: { ...authHeader() } });
   return handle<T>(res);
 }
+
+// Para descargas binarias (export a Excel/PDF) — un <a href> plano no manda
+// el header de Authorization, así que hay que traer el archivo por fetch y
+// disparar la descarga a mano.
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_URL}${path}`, { headers: { ...authHeader() } });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+    const message = Array.isArray(data.message) ? data.message.join(", ") : (data.message ?? "No se pudo descargar el archivo");
+    throw new ApiError(message, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
