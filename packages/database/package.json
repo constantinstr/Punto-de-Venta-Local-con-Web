@@ -4,20 +4,27 @@
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "scripts": {
     "generate": "prisma generate",
     "build": "prisma generate && tsc",
     "typecheck": "tsc --noEmit",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
+    "seed": "prisma db seed",
     "studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^6.2.1"
+    "@prisma/client": "^6.2.1",
+    "bcrypt": "^5.1.1"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.10.5",
     "prisma": "^6.2.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
 }

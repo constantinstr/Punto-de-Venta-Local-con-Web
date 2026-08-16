@@ -27,13 +27,23 @@ export default function Home() {
       <section className="w-full max-w-md rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
         <h2 className="mb-2 text-sm font-medium text-zinc-500">Sesión</h2>
         {user ? (
-          <div className="flex items-center justify-between text-sm">
-            <span>
-              {user.fullName} · <span className="text-zinc-500">{user.role}</span>
-            </span>
-            <button onClick={logout} className="underline">
-              Salir
-            </button>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span>
+                {user.fullName} · <span className="text-zinc-500">{user.role}</span>
+              </span>
+              <button onClick={logout} className="underline">
+                Salir
+              </button>
+            </div>
+            <div className="flex gap-4">
+              <Link href="/catalog" className="underline">
+                Catálogo
+              </Link>
+              <Link href="/stock" className="underline">
+                Stock
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="flex gap-4 text-sm">

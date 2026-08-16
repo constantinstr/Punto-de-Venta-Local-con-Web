@@ -1,6 +1,8 @@
 import { prisma } from "./client";
 import type { Prisma } from "../generated/client";
 
+export type TransactionClient = Prisma.TransactionClient;
+
 // Corre `fn` dentro de una transacción con `app.tenant_id` seteado como
 // variable de sesión, para que las políticas RLS (ver prisma/migrations/
 // ..._enable_row_level_security) filtren las filas del tenant correcto.

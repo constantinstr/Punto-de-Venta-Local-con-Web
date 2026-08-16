@@ -17,15 +17,15 @@ datasource db {
 
 enum UserRole {
   SUPERADMIN // Staff del SaaS (soporte multi-tenant, sin tenantId)
-  OWNER      // Dueño del comercio (tenant)
-  ADMIN      // Administrador del tenant
-  MANAGER    // Encargado de local
-  CASHIER    // Cajero
+  OWNER // Dueño del comercio (tenant)
+  ADMIN // Administrador del tenant
+  MANAGER // Encargado de local
+  CASHIER // Cajero
 }
 
 enum ProductType {
   SIMPLE
-  VARIANT_PARENT
+  VARIABLE
   BUNDLE
 }
 
@@ -117,27 +117,29 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users      User[]
-  stores     Store[]
-  categories Category[]
-  products   Product[]
-  customers  Customer[]
-  syncQueue  SyncQueue[]
+  users           User[]
+  stores          Store[]
+  categories      Category[]
+  products        Product[]
+  productVariants ProductVariant[]
+  stockLevels     StockLevel[]
+  customers       Customer[]
+  syncQueue       SyncQueue[]
 }
 
 model User {
-  id           String    @id @default(cuid())
+  id           String      @id @default(cuid())
   tenantId     String?
-  tenant       Tenant?   @relation(fields: [tenantId], references: [id])
-  email        String    @unique
+  tenant       Tenant?     @relation(fields: [tenantId], references: [id])
+  email        String      @unique
   passwordHash String
   fullName     String
-  role         UserRole  @default(CASHIER)
-  isActive     Boolean   @default(true)
-  storeAccess  Store[]   @relation("UserStores")
+  role         UserRole    @default(CASHIER)
+  isActive     Boolean     @default(true)
+  storeAccess  Store[]     @relation("UserStores")
   cashShifts   CashShift[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@index([tenantId])
 }
@@ -152,7 +154,7 @@ model Store {
   afipCredential    AfipCredential?
   wooCommerceConfig WooCommerceConfig?
   cashRegisters     CashRegister[]
-  storeStocks       StoreStock[]
+  stockLevels       StockLevel[]
   orders            Order[]
   users             User[]             @relation("UserStores")
   createdAt         DateTime           @default(now())
@@ -178,33 +180,33 @@ model CashRegister {
 }
 
 model CashShift {
-  id              String           @id @default(cuid())
-  cashRegisterId  String
-  cashRegister    CashRegister     @relation(fields: [cashRegisterId], references: [id])
-  userId          String
-  user            User             @relation(fields: [userId], references: [id])
-  openingAmount   Decimal          @db.Decimal(12, 2)
-  closingAmount   Decimal?         @db.Decimal(12, 2)
-  expectedAmount  Decimal?         @db.Decimal(12, 2)
-  difference      Decimal?         @db.Decimal(12, 2)
-  status          CashShiftStatus  @default(OPEN)
-  openedAt        DateTime         @default(now())
-  closedAt        DateTime?
-  movements       CashMovement[]
-  orders          Order[]
+  id             String          @id @default(cuid())
+  cashRegisterId String
+  cashRegister   CashRegister    @relation(fields: [cashRegisterId], references: [id])
+  userId         String
+  user           User            @relation(fields: [userId], references: [id])
+  openingAmount  Decimal         @db.Decimal(12, 2)
+  closingAmount  Decimal?        @db.Decimal(12, 2)
+  expectedAmount Decimal?        @db.Decimal(12, 2)
+  difference     Decimal?        @db.Decimal(12, 2)
+  status         CashShiftStatus @default(OPEN)
+  openedAt       DateTime        @default(now())
+  closedAt       DateTime?
+  movements      CashMovement[]
+  orders         Order[]
 
   @@index([cashRegisterId])
   @@index([userId])
 }
 
 model CashMovement {
-  id          String            @id @default(cuid())
+  id          String           @id @default(cuid())
   cashShiftId String
-  cashShift   CashShift         @relation(fields: [cashShiftId], references: [id])
+  cashShift   CashShift        @relation(fields: [cashShiftId], references: [id])
   type        CashMovementType
-  amount      Decimal           @db.Decimal(12, 2)
+  amount      Decimal          @db.Decimal(12, 2)
   reason      String
-  createdAt   DateTime          @default(now())
+  createdAt   DateTime         @default(now())
 
   @@index([cashShiftId])
 }
@@ -239,7 +241,7 @@ model Product {
   name         String
   description  String?
   type         ProductType  @default(SIMPLE)
-  costPrice    Decimal      @db.Decimal(12, 2) @default(0)
+  costPrice    Decimal      @default(0) @db.Decimal(12, 2)
   price        Decimal      @db.Decimal(12, 2)
   vatCondition VatCondition @default(IVA_21)
   trackStock   Boolean      @default(true)
@@ -247,7 +249,7 @@ model Product {
   wooProductId Int?
 
   variants         ProductVariant[]
-  storeStocks      StoreStock[]
+  stockLevels      StockLevel[]
   orderItems       OrderItem[]
   bundleComponents BundleItem[]     @relation("BundleComponent")
   bundleItems      BundleItem[]     @relation("BundleParent")
@@ -256,54 +258,72 @@ model Product {
   updatedAt DateTime @updatedAt
 
   @@unique([tenantId, sku])
-  @@index([tenantId, barcode])
+  @@unique([tenantId, barcode])
 }
 
+// tenantId está denormalizado desde Product para poder exigir unicidad de
+// sku/barcode a nivel de tenant (no solo por producto) y para habilitar RLS
+// directo sobre esta tabla, igual que en Product.
 model ProductVariant {
-  id             String       @id @default(cuid())
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
   productId      String
-  product        Product      @relation(fields: [productId], references: [id])
+  product        Product  @relation(fields: [productId], references: [id])
   sku            String
   barcode        String?
-  attributes     Json         // { "color": "Rojo", "talle": "M" }
-  price          Decimal?     @db.Decimal(12, 2)
+  attributes     Json // { "color": "Rojo", "talle": "M" }
+  price          Decimal? @db.Decimal(12, 2)
+  costPrice      Decimal? @db.Decimal(12, 2)
   wooVariationId Int?
 
-  storeStocks StoreStock[]
-  orderItems  OrderItem[]
+  stockLevels           StockLevel[]
+  orderItems            OrderItem[]
+  bundleComponentUsages BundleItem[]
 
-  @@unique([productId, sku])
-  @@index([barcode])
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@index([productId])
 }
 
-// Combos/bundles: BundleItem une un Product "contenedor" (type=BUNDLE) con sus componentes
+// Combos/bundles: BundleItem une un Product "contenedor" (type=BUNDLE) con sus
+// componentes. componentVariantId es opcional: si el combo requiere una
+// variante específica del componente (ej. "Mate Imperial - Verde"), se fija
+// acá; si no, el componente se resuelve a nivel de producto simple.
 model BundleItem {
-  id                  String  @id @default(cuid())
-  bundleProductId     String
-  bundleProduct       Product @relation("BundleParent", fields: [bundleProductId], references: [id])
-  componentProductId  String
-  componentProduct    Product @relation("BundleComponent", fields: [componentProductId], references: [id])
-  quantity            Decimal @db.Decimal(12, 3) @default(1)
+  id                 String          @id @default(cuid())
+  bundleProductId    String
+  bundleProduct      Product         @relation("BundleParent", fields: [bundleProductId], references: [id])
+  componentProductId String
+  componentProduct   Product         @relation("BundleComponent", fields: [componentProductId], references: [id])
+  componentVariantId String?
+  componentVariant   ProductVariant? @relation(fields: [componentVariantId], references: [id])
+  quantity           Decimal         @default(1) @db.Decimal(12, 3)
 
   @@unique([bundleProductId, componentProductId])
 }
 
-// Stock por local. product XOR variant debe estar seteado (regla de negocio, no expresable en Prisma).
-model StoreStock {
+// Stock físico por local. product XOR variant debe estar seteado (regla de
+// negocio, no expresable en Prisma). Los combos (type=BUNDLE) no tienen fila
+// propia acá — su disponibilidad se calcula en tiempo real a partir del
+// stock de sus componentes (ver apps/api/src/stock/stock.service.ts).
+model StockLevel {
   id               String          @id @default(cuid())
+  tenantId         String
+  tenant           Tenant          @relation(fields: [tenantId], references: [id])
   storeId          String
   store            Store           @relation(fields: [storeId], references: [id])
   productId        String?
   product          Product?        @relation(fields: [productId], references: [id])
   variantId        String?
   variant          ProductVariant? @relation(fields: [variantId], references: [id])
-  quantity         Decimal         @db.Decimal(12, 3) @default(0)
-  reservedQuantity Decimal         @db.Decimal(12, 3) @default(0)
-  minStock         Decimal?        @db.Decimal(12, 3)
+  quantity         Decimal         @default(0) @db.Decimal(12, 3)
+  reservedQuantity Decimal         @default(0) @db.Decimal(12, 3)
+  minAlertStock    Decimal?        @db.Decimal(12, 3)
   updatedAt        DateTime        @updatedAt
 
   @@unique([storeId, productId, variantId])
-  @@index([storeId])
+  @@index([tenantId, storeId])
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -311,39 +331,39 @@ model StoreStock {
 // ──────────────────────────────────────────────────────────────────────────
 
 model Customer {
-  id               String   @id @default(cuid())
-  tenantId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id])
-  docType          String?  // DNI, CUIT
-  docNumber        String?
-  name             String
-  email            String?
-  phone            String?
-  fiscalCondition  String?  // Consumidor Final, Responsable Inscripto, Monotributo, Exento
-  accountBalance   Decimal  @db.Decimal(12, 2) @default(0) // cuenta corriente
-  orders           Order[]
-  createdAt        DateTime @default(now())
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  docType         String? // DNI, CUIT
+  docNumber       String?
+  name            String
+  email           String?
+  phone           String?
+  fiscalCondition String? // Consumidor Final, Responsable Inscripto, Monotributo, Exento
+  accountBalance  Decimal  @default(0) @db.Decimal(12, 2) // cuenta corriente
+  orders          Order[]
+  createdAt       DateTime @default(now())
 
   @@index([tenantId])
 }
 
 model Order {
-  id              String       @id @default(cuid())
-  tenantId        String
-  storeId         String
-  store           Store        @relation(fields: [storeId], references: [id])
-  cashShiftId     String?
-  cashShift       CashShift?   @relation(fields: [cashShiftId], references: [id])
-  customerId      String?
-  customer        Customer?    @relation(fields: [customerId], references: [id])
-  source          OrderSource  @default(POS)
-  status          OrderStatus  @default(OPEN)
-  subtotal        Decimal      @db.Decimal(12, 2)
-  discountTotal   Decimal      @db.Decimal(12, 2) @default(0)
-  surchargeTotal  Decimal      @db.Decimal(12, 2) @default(0)
-  taxTotal        Decimal      @db.Decimal(12, 2) @default(0)
-  total           Decimal      @db.Decimal(12, 2)
-  wooOrderId      Int?
+  id             String      @id @default(cuid())
+  tenantId       String
+  storeId        String
+  store          Store       @relation(fields: [storeId], references: [id])
+  cashShiftId    String?
+  cashShift      CashShift?  @relation(fields: [cashShiftId], references: [id])
+  customerId     String?
+  customer       Customer?   @relation(fields: [customerId], references: [id])
+  source         OrderSource @default(POS)
+  status         OrderStatus @default(OPEN)
+  subtotal       Decimal     @db.Decimal(12, 2)
+  discountTotal  Decimal     @default(0) @db.Decimal(12, 2)
+  surchargeTotal Decimal     @default(0) @db.Decimal(12, 2)
+  taxTotal       Decimal     @default(0) @db.Decimal(12, 2)
+  total          Decimal     @db.Decimal(12, 2)
+  wooOrderId     Int?
 
   items    OrderItem[]
   payments Payment[]
@@ -365,11 +385,11 @@ model OrderItem {
   product        Product?        @relation(fields: [productId], references: [id])
   variantId      String?
   variant        ProductVariant? @relation(fields: [variantId], references: [id])
-  description    String          // snapshot del nombre al momento de la venta
+  description    String // snapshot del nombre al momento de la venta
   quantity       Decimal         @db.Decimal(12, 3)
   unitPrice      Decimal         @db.Decimal(12, 2)
-  discountAmount Decimal         @db.Decimal(12, 2) @default(0)
-  vatRate        Decimal         @db.Decimal(5, 2)  // snapshot de alícuota aplicada
+  discountAmount Decimal         @default(0) @db.Decimal(12, 2)
+  vatRate        Decimal         @db.Decimal(5, 2) // snapshot de alícuota aplicada
   vatAmount      Decimal         @db.Decimal(12, 2)
   lineTotal      Decimal         @db.Decimal(12, 2)
 
@@ -382,7 +402,7 @@ model Payment {
   order     Order         @relation(fields: [orderId], references: [id])
   method    PaymentMethod
   amount    Decimal       @db.Decimal(12, 2)
-  reference String?       // nro de operación / cupón / últimos 4 dígitos
+  reference String? // nro de operación / cupón / últimos 4 dígitos
   createdAt DateTime      @default(now())
 
   @@index([orderId])
@@ -412,16 +432,16 @@ model Invoice {
 }
 
 model AfipCredential {
-  id               String   @id @default(cuid())
-  storeId          String   @unique
-  store            Store    @relation(fields: [storeId], references: [id])
+  id               String    @id @default(cuid())
+  storeId          String    @unique
+  store            Store     @relation(fields: [storeId], references: [id])
   cuit             String
-  environment      String   @default("homologacion") // homologacion | produccion
-  certificate      String   @db.Text // referencia/cifrado, no texto plano en prod
-  privateKey       String   @db.Text // referencia/cifrado, no texto plano en prod
+  environment      String    @default("homologacion") // homologacion | produccion
+  certificate      String    @db.Text // referencia/cifrado, no texto plano en prod
+  privateKey       String    @db.Text // referencia/cifrado, no texto plano en prod
   lastTaRequestAt  DateTime?
-  taToken          String?  @db.Text
-  taSign           String?  @db.Text
+  taToken          String?   @db.Text
+  taSign           String?   @db.Text
   taExpirationTime DateTime?
 
   createdAt DateTime @default(now())
@@ -433,14 +453,14 @@ model AfipCredential {
 // ──────────────────────────────────────────────────────────────────────────
 
 model WooCommerceConfig {
-  id             String   @id @default(cuid())
-  storeId        String   @unique
-  store          Store    @relation(fields: [storeId], references: [id])
+  id             String    @id @default(cuid())
+  storeId        String    @unique
+  store          Store     @relation(fields: [storeId], references: [id])
   siteUrl        String
-  consumerKey    String   @db.Text // cifrado
-  consumerSecret String   @db.Text // cifrado
+  consumerKey    String    @db.Text // cifrado
+  consumerSecret String    @db.Text // cifrado
   webhookSecret  String
-  isActive       Boolean  @default(true)
+  isActive       Boolean   @default(true)
   lastSyncAt     DateTime?
 
   createdAt DateTime @default(now())
@@ -448,19 +468,19 @@ model WooCommerceConfig {
 }
 
 model SyncQueue {
-  id           String         @id @default(cuid())
-  tenantId     String
-  tenant       Tenant         @relation(fields: [tenantId], references: [id])
-  entityType   SyncEntityType
-  direction    SyncDirection
-  entityId     String         // id local o remoto según dirección
-  payload      Json
-  status       SyncStatus     @default(PENDING)
-  attempts     Int            @default(0)
-  maxAttempts  Int            @default(5)
-  lastError    String?
-  processedAt  DateTime?
-  createdAt    DateTime       @default(now())
+  id          String         @id @default(cuid())
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  entityType  SyncEntityType
+  direction   SyncDirection
+  entityId    String // id local o remoto según dirección
+  payload     Json
+  status      SyncStatus     @default(PENDING)
+  attempts    Int            @default(0)
+  maxAttempts Int            @default(5)
+  lastError   String?
+  processedAt DateTime?
+  createdAt   DateTime       @default(now())
 
   @@index([tenantId, status])
 }

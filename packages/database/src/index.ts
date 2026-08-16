@@ -1,3 +1,3 @@
 export { prisma } from "./client";
-export { withTenantContext, withAuthLookupContext } from "./tenant-context";
+export { withTenantContext, withAuthLookupContext, type TransactionClient } from "./tenant-context";
 export * from "../generated/client";
