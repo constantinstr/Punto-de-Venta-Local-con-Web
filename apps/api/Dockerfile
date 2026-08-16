@@ -35,7 +35,7 @@ RUN pnpm --filter @pos/database run build \
 
 # ── prod-deps: mismo árbol, pero podado a solo dependencies (sin dev) ──
 FROM build AS prod-deps
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile --config.confirmModulesPurge=false
 
 # ── runtime: imagen final — sin toolchain de build, usuario sin privilegios ──
 FROM node:22-alpine AS runtime

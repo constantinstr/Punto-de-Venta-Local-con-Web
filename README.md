@@ -3,8 +3,25 @@
 Plataforma SaaS de Punto de Venta Web/PWA multi-tenant con sincronización de
 stock en tiempo real (WooCommerce) y facturación electrónica AFIP.
 
-Ver `docs/ARCHITECTURE.md` para el diseño completo y `docs/ROADMAP.md` para
-el plan de sprints.
+Ver `docs/ARCHITECTURE.md` para el diseño completo, `docs/ROADMAP.md` para
+el plan de sprints y **[`docs/deployment.md`](./docs/deployment.md)** para
+la guía operativa completa (arranque, despliegue en Docker, alta de
+tenants/AFIP/WooCommerce y backups).
+
+## Arquitectura y stack
+
+| Capa | Tecnología |
+|---|---|
+| Frontend | Next.js (App Router) + TS — PWA instalable, offline-first en el mostrador |
+| Backend | NestJS + TS — módulos por dominio (auth, catálogo, ventas, caja, reportes, afip, woocommerce) |
+| Base de datos | PostgreSQL + Prisma, multi-tenant con **Row Level Security** forzada |
+| Colas | Redis + BullMQ — reintentos con backoff para AFIP y WooCommerce |
+| Facturación | AFIP WSAA + WSFE v1 (CAE) — Factura A/B/C, QR fiscal |
+| E-commerce | Sync bidireccional de stock con WooCommerce (REST API + webhooks HMAC) |
+
+Detalle de cada pieza: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md),
+[`docs/afip.md`](./docs/afip.md), [`docs/woocommerce-sync.md`](./docs/woocommerce-sync.md),
+[`docs/security-and-deployment.md`](./docs/security-and-deployment.md).
 
 ## Estructura
 
@@ -80,3 +97,22 @@ curl -X POST http://localhost:3001/queue-demo -H "Content-Type: application/json
 | `pnpm lint` / `pnpm typecheck` | Lint y chequeo de tipos en todos los paquetes |
 | `pnpm db:migrate` | Corre `prisma migrate dev` sobre `packages/database` |
 | `pnpm --filter @pos/database run studio` | Abre Prisma Studio para inspeccionar la DB |
+
+## Producción (Docker)
+
+Stack completo containerizado (`postgres`, `redis`, `api`, `pos-web`):
+
+```bash
+cp .env.example .env   # completar secretos — ver docs/deployment.md §2.2
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+| Comando | Qué hace |
+|---|---|
+| `docker compose -f docker-compose.prod.yml up -d --build` | Build + arranque de los 4 servicios |
+| `docker compose -f docker-compose.prod.yml down` | Detiene los servicios (conserva los datos) |
+| `docker compose -f docker-compose.prod.yml logs -f [servicio]` | Logs en vivo (todos o uno puntual) |
+| `docker compose -f docker-compose.prod.yml exec api packages/database/node_modules/.bin/prisma migrate deploy --schema=packages/database/prisma/schema.prisma` | Corre migraciones pendientes sin reiniciar el contenedor (normalmente automático vía entrypoint) |
+
+Guía completa (alta de tenants, certificados AFIP, WooCommerce, backups):
+**[`docs/deployment.md`](./docs/deployment.md)**.
