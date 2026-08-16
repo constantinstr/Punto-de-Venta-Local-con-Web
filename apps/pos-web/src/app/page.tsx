@@ -1,0 +1,52 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { useApiHealth } from "@/hooks/useApiHealth";
+
+export default function Home() {
+  const { data: health, isLoading, isError } = useApiHealth();
+  const [lastScan, setLastScan] = useState<string | null>(null);
+
+  const handleScan = useCallback((code: string) => {
+    setLastScan(code);
+  }, []);
+
+  useBarcodeScanner({ onScan: handleScan });
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-zinc-50 p-8 font-sans dark:bg-black">
+      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+        POS SaaS — Sprint 0
+      </h1>
+
+      <section className="w-full max-w-md rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="mb-2 text-sm font-medium text-zinc-500">Estado de la API</h2>
+        {isLoading && <p className="text-zinc-400">Consultando /health…</p>}
+        {isError && (
+          <p className="text-red-600">
+            No se pudo conectar a la API. ¿Está corriendo <code>pnpm dev</code> y Docker Compose?
+          </p>
+        )}
+        {health && (
+          <ul className="space-y-1 text-sm">
+            <li>DB: {health.db ? "✅ conectada" : "❌ sin conexión"}</li>
+            <li>Redis: {health.redis ? "✅ conectado" : "❌ sin conexión"}</li>
+          </ul>
+        )}
+      </section>
+
+      <section className="w-full max-w-md rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="mb-2 text-sm font-medium text-zinc-500">
+          Lector de código de barras
+        </h2>
+        <p className="text-sm text-zinc-400">
+          Escaneá un código con el lector físico (o tipealo rápido y presioná Enter).
+        </p>
+        <p className="mt-2 font-mono text-lg text-zinc-900 dark:text-zinc-50">
+          {lastScan ?? "—"}
+        </p>
+      </section>
+    </div>
+  );
+}
