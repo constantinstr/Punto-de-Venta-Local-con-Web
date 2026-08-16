@@ -10,6 +10,8 @@ import {
   CashMovementType,
   CashRegisterStatus,
   CashShiftStatus,
+  OrderStatus,
+  PaymentMethod,
   UserRole,
   Prisma,
   type TransactionClient,
@@ -190,7 +192,7 @@ export class CashShiftsService {
     tx: TransactionClient,
     shift: CashShift,
   ): Promise<ShiftSummary> {
-    const [inflows, outflows] = await Promise.all([
+    const [inflows, outflows, cashSalesTotal] = await Promise.all([
       tx.cashMovement.aggregate({
         where: { cashShiftId: shift.id, type: CashMovementType.INFLOW },
         _sum: { amount: true },
@@ -199,11 +201,11 @@ export class CashShiftsService {
         where: { cashShiftId: shift.id, type: CashMovementType.OUTFLOW },
         _sum: { amount: true },
       }),
+      this.computeCashSalesTotal(tx, shift.id),
     ]);
 
     const totalInflows = Number(inflows._sum.amount ?? 0);
     const totalOutflows = Number(outflows._sum.amount ?? 0);
-    const cashSalesTotal = 0; // TODO Sprint 5: sumar Payment.method=CASH de las órdenes de este turno
 
     return {
       cashShiftId: shift.id,
@@ -218,6 +220,38 @@ export class CashShiftsService {
         totalOutflows +
         cashSalesTotal,
     };
+  }
+
+  // El efectivo que realmente queda en el cajón por una venta no es la
+  // suma cruda de los pagos CASH: si el cliente pagó $1000 en efectivo por
+  // una compra de $850, el cajón solo gana $850 (los $150 de vuelto salen
+  // del mismo cajón). Por venta: min(cashPagado, max(0, total - noEfectivo)).
+  // Las órdenes canceladas no aportan (el efectivo ya se devolvió).
+  private async computeCashSalesTotal(
+    tx: TransactionClient,
+    shiftId: string,
+  ): Promise<number> {
+    const orders = await tx.order.findMany({
+      where: { cashShiftId: shiftId, status: { not: OrderStatus.CANCELLED } },
+      include: { payments: true },
+    });
+
+    let cashSalesTotal = 0;
+    for (const order of orders) {
+      const cashPaid = order.payments
+        .filter((p) => p.method === PaymentMethod.CASH)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+      if (cashPaid === 0) continue;
+      const nonCashPaid = order.payments
+        .filter((p) => p.method !== PaymentMethod.CASH)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+      const netCash = Math.min(
+        cashPaid,
+        Math.max(0, Number(order.total) - nonCashPaid),
+      );
+      cashSalesTotal += netCash;
+    }
+    return cashSalesTotal;
   }
 
   private async requireShift(

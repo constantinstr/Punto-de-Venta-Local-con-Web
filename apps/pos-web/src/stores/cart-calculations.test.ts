@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeCartTotals, itemExceedsStock, cartHasStockIssues } from "./cart-calculations";
+import { computeCartTotals, computeOrderItemsPayload, itemExceedsStock, cartHasStockIssues } from "./cart-calculations";
 import type { CartItem } from "./cart-types";
 
 function item(overrides: Partial<CartItem>): CartItem {
@@ -76,6 +76,30 @@ describe("computeCartTotals", () => {
     expect(totals.total).toBe(0);
     expect(totals.subtotalBruto).toBe(0);
     expect(totals.vatBreakdown).toHaveLength(0);
+  });
+});
+
+describe("computeOrderItemsPayload", () => {
+  it("incluye el descuento de línea + la porción prorrateada del global", () => {
+    const payload = computeOrderItemsPayload(
+      [
+        item({ lineId: "a", productId: "a", unitPrice: 100, quantity: 1, vatCondition: "IVA_21" }),
+        item({ lineId: "b", productId: "b", unitPrice: 100, quantity: 1, vatCondition: "EXENTO" }),
+      ],
+      { type: "FIXED", value: 20 },
+    );
+
+    expect(payload).toHaveLength(2);
+    // Subtotal 200, descuento global 20 -> 10 por línea (mismo peso)
+    expect(payload[0].discountAmount).toBe(10);
+    expect(payload[1].discountAmount).toBe(10);
+    expect(payload[0].productId).toBe("a");
+    expect(payload[0].quantity).toBe(1);
+  });
+
+  it("nunca manda el precio: solo productId/variantId/quantity/discountAmount", () => {
+    const payload = computeOrderItemsPayload([item({ unitPrice: 999, quantity: 2 })]);
+    expect(Object.keys(payload[0]).sort()).toEqual(["discountAmount", "productId", "quantity", "variantId"].sort());
   });
 });
 

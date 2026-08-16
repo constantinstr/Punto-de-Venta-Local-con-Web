@@ -12,6 +12,7 @@ import { ProductsModule } from './products/products.module';
 import { StockModule } from './stock/stock.module';
 import { CashRegistersModule } from './cash-registers/cash-registers.module';
 import { CashShiftsModule } from './cash-shifts/cash-shifts.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CashShiftsModule } from './cash-shifts/cash-shifts.module';
     StockModule,
     CashRegistersModule,
     CashShiftsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

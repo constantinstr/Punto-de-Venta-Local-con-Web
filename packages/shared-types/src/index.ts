@@ -240,3 +240,83 @@ export interface CloseShiftInput {
   actualCash: number;
   notes?: string;
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// ÓRDENES Y PAGOS (Sprint 5)
+// ──────────────────────────────────────────────────────────────────────────
+
+export type OrderStatus = "COMPLETED" | "CANCELLED" | "REFUNDED";
+export type PaymentMethod = "CASH" | "DEBIT_CARD" | "CREDIT_CARD" | "TRANSFER" | "MERCADO_PAGO" | "CURRENT_ACCOUNT";
+
+export interface CreateOrderItemInput {
+  productId: string;
+  variantId?: string | null;
+  quantity: number;
+  discountAmount?: number;
+}
+
+export interface CreatePaymentInput {
+  method: PaymentMethod;
+  amount: number;
+  reference?: string;
+}
+
+export interface CreateOrderInput {
+  storeId: string;
+  cashShiftId?: string;
+  items: CreateOrderItemInput[];
+  payments: CreatePaymentInput[];
+  notes?: string;
+}
+
+export interface OrderItemBundleComponent {
+  id: string;
+  componentProductId: string;
+  componentVariantId: string | null;
+  componentName: string;
+  quantity: string;
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  productType: ProductType;
+  productName: string;
+  sku: string;
+  quantity: string;
+  unitPrice: string;
+  unitCost: string;
+  vatCondition: VatCondition;
+  taxRate: string;
+  discountAmount: string;
+  subtotal: string;
+  total: string;
+  bundleComponents: OrderItemBundleComponent[];
+}
+
+export interface OrderPayment {
+  id: string;
+  method: PaymentMethod;
+  amount: string;
+  reference: string | null;
+  createdAt: string;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: number;
+  storeId: string;
+  cashShiftId: string | null;
+  userId: string;
+  user: { id: string; fullName: string };
+  status: OrderStatus;
+  subtotal: string;
+  discountAmount: string;
+  taxAmount: string;
+  total: string;
+  notes: string | null;
+  items: OrderItem[];
+  payments: OrderPayment[];
+  createdAt: string;
+}

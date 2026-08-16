@@ -43,7 +43,6 @@ enum OrderSource {
 }
 
 enum OrderStatus {
-  OPEN
   COMPLETED
   CANCELLED
   REFUNDED
@@ -51,11 +50,11 @@ enum OrderStatus {
 
 enum PaymentMethod {
   CASH
-  DEBIT
-  CREDIT
+  DEBIT_CARD
+  CREDIT_CARD
   TRANSFER
-  MERCADOPAGO
-  ACCOUNT_CREDIT
+  MERCADO_PAGO
+  CURRENT_ACCOUNT
 }
 
 enum CashRegisterStatus {
@@ -131,6 +130,9 @@ model Tenant {
   cashRegisters   CashRegister[]
   cashShifts      CashShift[]
   cashMovements   CashMovement[]
+  orders          Order[]
+  orderItems      OrderItem[]
+  payments        Payment[]
   customers       Customer[]
   syncQueue       SyncQueue[]
 }
@@ -147,6 +149,7 @@ model User {
   storeAccess   Store[]        @relation("UserStores")
   cashShifts    CashShift[]
   cashMovements CashMovement[]
+  orders        Order[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -275,11 +278,12 @@ model Product {
   isActive     Boolean      @default(true)
   wooProductId Int?
 
-  variants         ProductVariant[]
-  stockLevels      StockLevel[]
-  orderItems       OrderItem[]
-  bundleComponents BundleItem[]     @relation("BundleComponent")
-  bundleItems      BundleItem[]     @relation("BundleParent")
+  variants                       ProductVariant[]
+  stockLevels                    StockLevel[]
+  orderItems                     OrderItem[]
+  orderItemBundleComponentUsages OrderItemBundleComponent[]
+  bundleComponents               BundleItem[]               @relation("BundleComponent")
+  bundleItems                    BundleItem[]               @relation("BundleParent")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -304,9 +308,10 @@ model ProductVariant {
   costPrice      Decimal? @db.Decimal(12, 2)
   wooVariationId Int?
 
-  stockLevels           StockLevel[]
-  orderItems            OrderItem[]
-  bundleComponentUsages BundleItem[]
+  stockLevels                    StockLevel[]
+  orderItems                     OrderItem[]
+  orderItemBundleComponentUsages OrderItemBundleComponent[]
+  bundleComponentUsages          BundleItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, barcode])
@@ -374,22 +379,32 @@ model Customer {
   @@index([tenantId])
 }
 
+// orderNumber es secuencial por (tenantId, storeId) — se calcula dentro de
+// la misma transacción que crea la orden (MAX+1) y se protege con el
+// @@unique de abajo: si dos cajas concurrentes calculan el mismo número, la
+// segunda transacción falla con P2002 y el servicio reintenta desde cero
+// (ver OrdersService.create). No es el número de comprobante fiscal — ese
+// lo asigna AFIP en Sprint 6 vía Invoice.voucherNumber.
 model Order {
   id             String      @id @default(cuid())
   tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
   storeId        String
   store          Store       @relation(fields: [storeId], references: [id])
   cashShiftId    String?
   cashShift      CashShift?  @relation(fields: [cashShiftId], references: [id])
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
   customerId     String?
   customer       Customer?   @relation(fields: [customerId], references: [id])
+  orderNumber    Int
   source         OrderSource @default(POS)
-  status         OrderStatus @default(OPEN)
+  status         OrderStatus @default(COMPLETED)
   subtotal       Decimal     @db.Decimal(12, 2)
-  discountTotal  Decimal     @default(0) @db.Decimal(12, 2)
-  surchargeTotal Decimal     @default(0) @db.Decimal(12, 2)
-  taxTotal       Decimal     @default(0) @db.Decimal(12, 2)
+  discountAmount Decimal     @default(0) @db.Decimal(12, 2)
+  taxAmount      Decimal     @default(0) @db.Decimal(12, 2)
   total          Decimal     @db.Decimal(12, 2)
+  notes          String?
   wooOrderId     Int?
 
   items    OrderItem[]
@@ -399,32 +414,65 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, storeId, orderNumber])
   @@index([tenantId])
   @@index([storeId])
   @@index([wooOrderId])
 }
 
+// Todos los campos "snapshot" (productName, sku, unitPrice, unitCost,
+// vatCondition/taxRate) se copian del catálogo al momento de la venta y ya
+// no cambian, aunque el producto se edite o borre después — la orden
+// refleja lo que realmente se vendió, no el estado actual del catálogo.
 model OrderItem {
   id             String          @id @default(cuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
   orderId        String
   order          Order           @relation(fields: [orderId], references: [id])
-  productId      String?
-  product        Product?        @relation(fields: [productId], references: [id])
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
   variantId      String?
   variant        ProductVariant? @relation(fields: [variantId], references: [id])
-  description    String // snapshot del nombre al momento de la venta
+  productType    ProductType
+  productName    String
+  sku            String
   quantity       Decimal         @db.Decimal(12, 3)
   unitPrice      Decimal         @db.Decimal(12, 2)
+  unitCost       Decimal         @db.Decimal(12, 2)
+  vatCondition   VatCondition
+  taxRate        Decimal         @db.Decimal(5, 2) // alícuota numérica snapshot (21, 10.5, 0)
   discountAmount Decimal         @default(0) @db.Decimal(12, 2)
-  vatRate        Decimal         @db.Decimal(5, 2) // snapshot de alícuota aplicada
-  vatAmount      Decimal         @db.Decimal(12, 2)
-  lineTotal      Decimal         @db.Decimal(12, 2)
+  subtotal       Decimal         @db.Decimal(12, 2) // quantity * unitPrice, antes del descuento
+  total          Decimal         @db.Decimal(12, 2) // subtotal - discountAmount
 
+  bundleComponents OrderItemBundleComponent[]
+
+  @@index([tenantId])
   @@index([orderId])
+}
+
+// Snapshot de qué componentes (y cuánto de cada uno) se descontaron del
+// stock físico al vender un OrderItem de tipo BUNDLE — trazabilidad
+// histórica de costo/stock aunque el combo cambie de composición después.
+model OrderItemBundleComponent {
+  id                 String          @id @default(cuid())
+  orderItemId        String
+  orderItem          OrderItem       @relation(fields: [orderItemId], references: [id])
+  componentProductId String
+  componentProduct   Product         @relation(fields: [componentProductId], references: [id])
+  componentVariantId String?
+  componentVariant   ProductVariant? @relation(fields: [componentVariantId], references: [id])
+  componentName      String
+  quantity           Decimal         @db.Decimal(12, 3) // ya multiplicada por la cantidad vendida del combo
+
+  @@index([orderItemId])
 }
 
 model Payment {
   id        String        @id @default(cuid())
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
   orderId   String
   order     Order         @relation(fields: [orderId], references: [id])
   method    PaymentMethod
@@ -432,6 +480,7 @@ model Payment {
   reference String? // nro de operación / cupón / últimos 4 dígitos
   createdAt DateTime      @default(now())
 
+  @@index([tenantId])
   @@index([orderId])
 }
 

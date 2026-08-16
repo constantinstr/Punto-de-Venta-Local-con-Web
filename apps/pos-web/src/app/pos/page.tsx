@@ -8,7 +8,7 @@ import { useCategories, useStores } from "@/hooks/useCatalog";
 import { useCashRegisters, useCurrentShift } from "@/hooks/useCashShifts";
 import { useCartStore } from "@/stores/useCartStore";
 import { useCashSessionStore } from "@/stores/useCashSessionStore";
-import { computeCartTotals, cartHasStockIssues } from "@/stores/cart-calculations";
+import { computeCartTotals, computeOrderItemsPayload, cartHasStockIssues } from "@/stores/cart-calculations";
 import type { CartItem } from "@/stores/cart-types";
 import { apiGet } from "@/lib/api";
 import { playScanErrorBeep, playScanSuccessBeep } from "@/lib/beep";
@@ -106,6 +106,7 @@ export default function PosPage() {
   }, [scanMessage]);
 
   const totals = useMemo(() => computeCartTotals(items, globalDiscount), [items, globalDiscount]);
+  const orderItemsPayload = useMemo(() => computeOrderItemsPayload(items, globalDiscount), [items, globalDiscount]);
   const hasStockIssues = useMemo(() => cartHasStockIssues(items), [items]);
 
   const filteredProducts = useMemo(() => {
@@ -401,12 +402,16 @@ export default function PosPage() {
         />
       )}
 
-      {checkoutOpen && (
+      {checkoutOpen && currentShift && storeId && (
         <CheckoutModal
           totals={totals}
-          onConfirm={() => {
+          orderItemsPayload={orderItemsPayload}
+          storeId={storeId}
+          cashShiftId={currentShift.id}
+          onNewSale={() => {
             clearCart();
             setCheckoutOpen(false);
+            searchInputRef.current?.focus();
           }}
           onClose={() => setCheckoutOpen(false)}
         />
