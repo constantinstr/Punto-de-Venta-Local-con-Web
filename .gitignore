@@ -35,3 +35,6 @@ Thumbs.db
 
 # Docker volumes (si se montan como carpeta local)
 .docker-data/
+
+# Claves privadas y CSR de AFIP (nunca deben versionarse)
+certs/

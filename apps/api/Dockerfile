@@ -58,6 +58,12 @@ COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
 COPY apps/api/docker-entrypoint.sh ./apps/api/docker-entrypoint.sh
 RUN chmod +x ./apps/api/docker-entrypoint.sh
 
+# Imágenes de producto subidas (ver products/product-image.storage.ts) —
+# creada acá para que quede con dueño node:node antes del chown de abajo;
+# docker-compose.prod.yml monta un volumen nombrado sobre este path para que
+# sobrevivan a un redeploy del contenedor.
+RUN mkdir -p uploads/products
+
 # La imagen base node:* ya trae un usuario "node" (uid 1000) sin privilegios
 # — no hace falta crearlo a mano.
 RUN chown -R node:node /repo

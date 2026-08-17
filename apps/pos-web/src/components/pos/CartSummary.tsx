@@ -23,13 +23,13 @@ export function CartSummary({
   checkoutDisabled: boolean;
 }) {
   return (
-    <div className="space-y-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-      <div className="flex justify-between text-sm text-zinc-500">
+    <div className="space-y-3 border-t border-border pt-3  ">
+      <div className="flex justify-between text-sm text-muted">
         <span>Subtotal</span>
         <span>${totals.subtotalBruto.toLocaleString("es-AR")}</span>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-zinc-500">
+      <div className="flex items-center justify-between text-sm text-muted">
         <label className="flex items-center gap-2">
           Descuento global
           <input
@@ -41,7 +41,7 @@ export function CartSummary({
               const value = e.target.value === "" ? undefined : Number(e.target.value);
               onSetGlobalDiscount(value === undefined ? undefined : { type: globalDiscount?.type ?? "FIXED", value });
             }}
-            className="w-20 rounded border border-zinc-300 px-2 py-0.5 text-right dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-20 rounded border border-border px-2 py-0.5 text-right   bg-surface"
           />
           <select
             value={globalDiscount?.type ?? "FIXED"}
@@ -50,7 +50,7 @@ export function CartSummary({
                 globalDiscount?.value ? { type: e.target.value as "FIXED" | "PERCENTAGE", value: globalDiscount.value } : undefined,
               )
             }
-            className="rounded border border-zinc-300 px-1 py-0.5 dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded border border-border px-1 py-0.5   bg-surface"
           >
             <option value="FIXED">$</option>
             <option value="PERCENTAGE">%</option>
@@ -59,7 +59,7 @@ export function CartSummary({
         <span>-${totals.totalDiscount.toLocaleString("es-AR")}</span>
       </div>
 
-      <div className="space-y-1 text-xs text-zinc-400">
+      <div className="space-y-1 text-xs text-muted">
         {totals.vatBreakdown.map((v) => (
           <div key={v.condition} className="flex justify-between">
             <span>{VAT_LABELS[v.condition]}</span>
@@ -68,9 +68,9 @@ export function CartSummary({
         ))}
       </div>
 
-      <div className="flex items-baseline justify-between border-t border-zinc-200 pt-3 dark:border-zinc-800">
-        <span className="text-sm font-medium text-zinc-500">Total</span>
-        <span className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+      <div className="flex items-baseline justify-between border-t border-border pt-3  ">
+        <span className="text-sm font-medium text-muted">Total</span>
+        <span className="text-3xl font-bold text-foreground  ">
           ${totals.total.toLocaleString("es-AR")}
         </span>
       </div>

@@ -33,6 +33,15 @@ export interface WcOrderLineItem {
   sku?: string;
 }
 
+export interface PriceOutboundJobData {
+  syncLogId: string;
+  tenantId: string;
+  configId: string;
+  wooProductId: number;
+  wooVariantId?: number;
+  price: number;
+}
+
 export interface OrderInboundJobData {
   syncLogId: string;
   tenantId: string;
@@ -44,7 +53,8 @@ export interface OrderInboundJobData {
   };
 }
 
-export type WooJobData = StockOutboundJobData | OrderInboundJobData;
+export type WooJobData =
+  StockOutboundJobData | PriceOutboundJobData | OrderInboundJobData;
 
 // Cola única "woocommerce-queue" para ambos sentidos (outbound stock,
 // inbound orders) — separa la sincronización del ciclo transaccional del
@@ -67,6 +77,10 @@ export class WooQueueService implements OnApplicationShutdown {
 
   addStockOutbound(data: StockOutboundJobData) {
     return this.queue.add('stock-outbound', data);
+  }
+
+  addPriceOutbound(data: PriceOutboundJobData) {
+    return this.queue.add('price-outbound', data);
   }
 
   addOrderInbound(data: OrderInboundJobData) {

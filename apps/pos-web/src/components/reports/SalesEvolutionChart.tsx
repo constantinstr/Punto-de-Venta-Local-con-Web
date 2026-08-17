@@ -27,7 +27,7 @@ export function SalesEvolutionChart({ data }: { data: Point[] }) {
   const surface = isDark ? CHROME.surface.dark : CHROME.surface.light;
 
   if (data.length === 0) {
-    return <p className="py-12 text-center text-sm text-zinc-400">Sin ventas en el período seleccionado.</p>;
+    return <p className="py-12 text-center text-sm text-muted">Sin ventas en el período seleccionado.</p>;
   }
 
   return (

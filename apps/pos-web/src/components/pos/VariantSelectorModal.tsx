@@ -28,13 +28,13 @@ export function VariantSelectorModal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-lg bg-white p-5 dark:bg-zinc-900"
+        className="w-full max-w-md rounded-lg bg-surface p-5 bg-surface"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-1 text-lg font-medium">{product.name}</h2>
-        <p className="mb-4 text-sm text-zinc-400">Elegí la variante (Esc para cancelar)</p>
+        <p className="mb-4 text-sm text-muted">Elegí la variante (Esc para cancelar)</p>
 
         <div className="space-y-2">
           {product.variants.map((v, i) => {
@@ -46,11 +46,11 @@ export function VariantSelectorModal({
                 type="button"
                 disabled={outOfStock}
                 onClick={() => onSelect(v)}
-                className="flex w-full items-center justify-between rounded border border-zinc-200 px-3 py-2 text-left text-sm hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800 dark:hover:border-zinc-600"
+                className="flex w-full items-center justify-between rounded border border-border px-3 py-2 text-left text-sm hover:border-accent disabled:cursor-not-allowed disabled:opacity-40    "
               >
                 <span>
                   {v.attributes ? Object.values(v.attributes).join(" / ") : v.sku}
-                  <span className="ml-2 text-zinc-400">${v.price.toLocaleString("es-AR")}</span>
+                  <span className="ml-2 text-muted">${v.price.toLocaleString("es-AR")}</span>
                 </span>
                 <StockBadge quantity={v.stockAvailable} isUnlimited={v.isUnlimitedStock} />
               </button>

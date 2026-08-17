@@ -45,6 +45,23 @@ export async function apiPost<T>(path: string, body: unknown, accessToken?: stri
   return handle<T>(res);
 }
 
+// Para subir archivos (imagen de producto) — sin "Content-Type" a mano: el
+// browser arma el boundary de multipart/form-data solo si se lo dejamos.
+export async function apiPostFile<T>(path: string, file: File): Promise<T> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { ...authHeader() },
+    body: formData,
+  });
+  return handle<T>(res);
+}
+
+export function apiFileUrl(path: string): string {
+  return `${API_URL}${path}`;
+}
+
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "PATCH",

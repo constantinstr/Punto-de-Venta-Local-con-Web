@@ -19,18 +19,18 @@ export default function Home() {
   useBarcodeScanner({ onScan: handleScan });
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-zinc-50 p-8 font-sans dark:bg-black">
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-8 font-sans bg-background">
+      <h1 className="text-2xl font-semibold text-foreground  ">
         POS SaaS — Sprint 1
       </h1>
 
-      <section className="w-full max-w-md rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="mb-2 text-sm font-medium text-zinc-500">Sesión</h2>
+      <section className="w-full max-w-md rounded-lg border border-border p-4  ">
+        <h2 className="mb-2 text-sm font-medium text-muted">Sesión</h2>
         {user ? (
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
               <span>
-                {user.fullName} · <span className="text-zinc-500">{user.role}</span>
+                {user.fullName} · <span className="text-muted">{user.role}</span>
               </span>
               <button onClick={logout} className="underline">
                 Salir
@@ -60,9 +60,9 @@ export default function Home() {
         )}
       </section>
 
-      <section className="w-full max-w-md rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="mb-2 text-sm font-medium text-zinc-500">Estado de la API</h2>
-        {isLoading && <p className="text-zinc-400">Consultando /health…</p>}
+      <section className="w-full max-w-md rounded-lg border border-border p-4  ">
+        <h2 className="mb-2 text-sm font-medium text-muted">Estado de la API</h2>
+        {isLoading && <p className="text-muted">Consultando /health…</p>}
         {isError && (
           <p className="text-red-600">
             No se pudo conectar a la API. ¿Está corriendo <code>pnpm dev</code> y los servicios locales?
@@ -76,14 +76,14 @@ export default function Home() {
         )}
       </section>
 
-      <section className="w-full max-w-md rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="mb-2 text-sm font-medium text-zinc-500">
+      <section className="w-full max-w-md rounded-lg border border-border p-4  ">
+        <h2 className="mb-2 text-sm font-medium text-muted">
           Lector de código de barras
         </h2>
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-muted">
           Escaneá un código con el lector físico (o tipealo rápido y presioná Enter).
         </p>
-        <p className="mt-2 font-mono text-lg text-zinc-900 dark:text-zinc-50">
+        <p className="mt-2 font-mono text-lg text-foreground  ">
           {lastScan ?? "—"}
         </p>
       </section>

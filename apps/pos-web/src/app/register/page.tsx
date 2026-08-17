@@ -40,12 +40,12 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-8 font-sans dark:bg-black">
+    <div className="flex min-h-screen items-center justify-center bg-background p-8 font-sans bg-background">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800"
+        className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6  "
       >
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Registrá tu comercio</h1>
+        <h1 className="text-xl font-semibold text-foreground  ">Registrá tu comercio</h1>
 
         <Field label="Nombre del comercio" value={form.tenantName} onChange={update("tenantName")} />
         <Field label="Nombre del primer local" value={form.storeName} onChange={update("storeName")} />
@@ -58,12 +58,12 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="w-full rounded bg-accent py-2 text-sm font-medium text-white disabled:opacity-50  "
         >
           {loading ? "Creando cuenta…" : "Crear cuenta"}
         </button>
 
-        <p className="text-center text-sm text-zinc-500">
+        <p className="text-center text-sm text-muted">
           ¿Ya tenés cuenta?{" "}
           <Link href="/login" className="underline">
             Iniciá sesión
@@ -93,7 +93,7 @@ function Field({
         required
         value={value}
         onChange={onChange}
-        className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+        className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
       />
     </label>
   );

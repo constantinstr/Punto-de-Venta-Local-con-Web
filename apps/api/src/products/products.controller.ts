@@ -1,4 +1,6 @@
+import { unlink } from 'node:fs/promises';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,9 +10,14 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express';
 import { UserRole } from '@pos/database';
 import { ProductsService } from './products.service';
+import { productImageMulterOptions } from './product-image.storage';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
@@ -74,6 +81,34 @@ export class ProductsController {
     @Body() dto: UpdateProductDto,
   ) {
     return this.productsService.update(requireTenant(user), id, dto);
+  }
+
+  @Post(':id/image')
+  @Roles(...CATALOG_WRITE_ROLES)
+  @UseInterceptors(FileInterceptor('file', productImageMulterOptions))
+  async uploadImage(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Archivo de imagen requerido (jpg/png/webp, máx 5MB)',
+      );
+    }
+    try {
+      return await this.productsService.updateImage(
+        requireTenant(user),
+        id,
+        `/uploads/products/${file.filename}`,
+      );
+    } catch (err) {
+      // El interceptor ya escribió el archivo en disco antes de que el
+      // handler corra (guards -> interceptor -> handler) — si el producto
+      // no existe/no es de este tenant, no dejamos el archivo huérfano.
+      await unlink(file.path).catch(() => undefined);
+      throw err;
+    }
   }
 
   @Post(':id/variants')

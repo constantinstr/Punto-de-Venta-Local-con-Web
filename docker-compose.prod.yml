@@ -63,6 +63,11 @@ services:
       WOO_RATE_LIMIT_PER_SEC: ${WOO_RATE_LIMIT_PER_SEC:-5}
     ports:
       - "3001:3001"
+    volumes:
+      # Imágenes de producto subidas por el usuario (ver
+      # apps/api/src/products/product-image.storage.ts) — sin esto se
+      # pierden en cada `up --build` porque la capa de imagen se descarta.
+      - api_uploads:/repo/uploads
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 10s
@@ -86,3 +91,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  api_uploads:

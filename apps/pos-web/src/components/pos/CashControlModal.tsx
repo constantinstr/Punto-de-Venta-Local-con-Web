@@ -20,19 +20,19 @@ export function CashControlModal({ shift, onClose, onClosed }: { shift: CashShif
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg bg-white dark:bg-zinc-900"
+        className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg bg-surface bg-surface"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="flex items-center justify-between border-b border-border p-4  ">
           <h2 className="text-lg font-medium">Control de caja — {shift.cashRegister.name}</h2>
-          <button onClick={onClose} className="text-zinc-400" aria-label="Cerrar">
+          <button onClick={onClose} className="text-muted" aria-label="Cerrar">
             × (Esc)
           </button>
         </div>
 
-        <div className="flex border-b border-zinc-200 text-sm dark:border-zinc-800">
+        <div className="flex border-b border-border text-sm  ">
           {(
             [
               ["movements", "Movimientos"],
@@ -44,7 +44,7 @@ export function CashControlModal({ shift, onClose, onClosed }: { shift: CashShif
               key={key}
               onClick={() => setTab(key)}
               className={`flex-1 border-b-2 px-4 py-2 ${
-                tab === key ? "border-zinc-900 font-medium dark:border-zinc-100" : "border-transparent text-zinc-400"
+                tab === key ? "border-accent font-medium border-accent text-accent" : "border-transparent text-muted"
               }`}
             >
               {label}
@@ -90,7 +90,7 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
           <select
             value={type}
             onChange={(e) => setType(e.target.value as CashMovementType)}
-            className="mt-1 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-950"
+            className="mt-1 rounded border border-border px-2 py-1.5   bg-surface"
           >
             <option value="OUTFLOW">Retiro / gasto</option>
             <option value="INFLOW">Ingreso</option>
@@ -105,7 +105,7 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
             required
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="mt-1 w-28 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-950"
+            className="mt-1 w-28 rounded border border-border px-2 py-1.5   bg-surface"
           />
         </label>
         <label className="flex-1 block">
@@ -115,13 +115,13 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Ej: pago de flete"
-            className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-950"
+            className="mt-1 w-full rounded border border-border px-2 py-1.5   bg-surface"
           />
         </label>
         <button
           type="submit"
           disabled={addMovement.isPending}
-          className="rounded bg-zinc-900 px-3 py-1.5 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="rounded bg-accent px-3 py-1.5 text-white disabled:opacity-50  "
         >
           Registrar
         </button>
@@ -130,7 +130,7 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
 
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800">
+          <tr className="border-b border-border text-xs text-muted  ">
             <th className="py-1.5">Hora</th>
             <th className="py-1.5">Tipo</th>
             <th className="py-1.5">Motivo</th>
@@ -139,7 +139,7 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
         </thead>
         <tbody>
           {movements?.map((m) => (
-            <tr key={m.id} className="border-b border-zinc-100 dark:border-zinc-900">
+            <tr key={m.id} className="border-b border-border  ">
               <td className="py-1.5">{new Date(m.createdAt).toLocaleTimeString("es-AR")}</td>
               <td className="py-1.5">{m.type === "INFLOW" ? "Ingreso" : "Retiro"}</td>
               <td className="py-1.5">{m.reason}</td>
@@ -150,7 +150,7 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
           ))}
           {movements?.length === 0 && (
             <tr>
-              <td colSpan={4} className="py-4 text-center text-zinc-400">
+              <td colSpan={4} className="py-4 text-center text-muted">
                 Sin movimientos todavía.
               </td>
             </tr>
@@ -164,18 +164,18 @@ function MovementsTab({ shiftId }: { shiftId: string }) {
 function ReportTab({ shiftId, shift }: { shiftId: string; shift: CashShift }) {
   const { data: summary, isLoading } = useShiftSummary(shiftId);
 
-  if (isLoading || !summary) return <p className="text-zinc-400">Calculando…</p>;
+  if (isLoading || !summary) return <p className="text-muted">Calculando…</p>;
 
   return (
     <div className="space-y-2 text-sm">
-      <p className="mb-2 text-xs text-zinc-400">
+      <p className="mb-2 text-xs text-muted">
         Reporte X — arqueo parcial, no cierra el turno. Abierto {new Date(shift.openedAt).toLocaleString("es-AR")}.
       </p>
       <Row label="Fondo inicial" value={summary.initialAmount} />
       <Row label="Ingresos manuales" value={summary.totalInflows} sign="+" />
       <Row label="Retiros / gastos" value={summary.totalOutflows} sign="-" />
       <Row label="Ventas en efectivo" value={summary.cashSalesTotal} sign="+" note="disponible desde Sprint 5" />
-      <div className="mt-3 flex items-baseline justify-between border-t border-zinc-200 pt-3 dark:border-zinc-800">
+      <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3  ">
         <span className="font-medium">Total esperado en caja</span>
         <span className="text-2xl font-bold">${summary.expectedCash.toLocaleString("es-AR")}</span>
       </div>
@@ -185,10 +185,10 @@ function ReportTab({ shiftId, shift }: { shiftId: string; shift: CashShift }) {
 
 function Row({ label, value, sign, note }: { label: string; value: number; sign?: "+" | "-"; note?: string }) {
   return (
-    <div className="flex items-baseline justify-between text-zinc-600 dark:text-zinc-300">
+    <div className="flex items-baseline justify-between text-muted  ">
       <span>
         {label}
-        {note && <span className="ml-1 text-xs text-zinc-400">({note})</span>}
+        {note && <span className="ml-1 text-xs text-muted">({note})</span>}
       </span>
       <span>
         {sign}${value.toLocaleString("es-AR")}
@@ -222,7 +222,7 @@ function CloseTab({ shiftId, onClosed }: { shiftId: string; onClosed: () => void
 
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-muted">
         Contá el efectivo físico de la caja y escribí el total — el sistema calcula sobrante/faltante contra lo
         esperado. Esta acción cierra el turno y libera la terminal.
       </p>
@@ -235,7 +235,7 @@ function CloseTab({ shiftId, onClosed }: { shiftId: string; onClosed: () => void
           step="0.01"
           value={actualCash}
           onChange={(e) => setActualCash(e.target.value)}
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-lg dark:border-zinc-700 dark:bg-zinc-950"
+          className="mt-1 w-full rounded border border-border px-3 py-2 text-lg   bg-surface"
         />
       </label>
 
@@ -244,7 +244,7 @@ function CloseTab({ shiftId, onClosed }: { shiftId: string; onClosed: () => void
         <input
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950"
+          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
         />
       </label>
 
@@ -252,7 +252,7 @@ function CloseTab({ shiftId, onClosed }: { shiftId: string; onClosed: () => void
         <div
           className={`rounded p-3 ${
             kind === "EXACT"
-              ? "bg-zinc-100 dark:bg-zinc-800"
+              ? "bg-accent-muted bg-accent-muted"
               : kind === "SURPLUS"
                 ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300"
                 : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"

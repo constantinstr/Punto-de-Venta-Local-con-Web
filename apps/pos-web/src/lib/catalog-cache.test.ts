@@ -10,6 +10,7 @@ const PRODUCT: Product = {
   barcode: "123",
   name: "Producto Test",
   description: null,
+  imageUrl: null,
   type: "SIMPLE",
   costPrice: "10",
   price: "20",

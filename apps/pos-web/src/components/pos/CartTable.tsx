@@ -18,7 +18,7 @@ export function CartTable({
 }) {
   if (items.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">
+      <div className="flex flex-1 items-center justify-center text-sm text-muted">
         Carrito vacío — escaneá o buscá un producto.
       </div>
     );
@@ -28,7 +28,7 @@ export function CartTable({
     <div className="flex-1 overflow-y-auto">
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800">
+          <tr className="border-b border-border text-xs text-muted  ">
             <th className="py-1.5">Producto</th>
             <th className="py-1.5 text-right">Cant.</th>
             <th className="py-1.5 text-right">Precio</th>
@@ -44,13 +44,13 @@ export function CartTable({
               <tr
                 key={item.lineId}
                 onClick={() => onSelectLine(item.lineId)}
-                className={`cursor-pointer border-b border-zinc-100 dark:border-zinc-900 ${
-                  selected ? "bg-zinc-100 dark:bg-zinc-900" : ""
+                className={`cursor-pointer border-b border-border   ${
+                  selected ? "bg-accent-muted" : ""
                 } ${exceeds ? "text-red-600" : ""}`}
               >
                 <td className="py-1.5">
                   <div className="font-medium">{item.name}</div>
-                  {item.attributesLabel && <div className="text-xs text-zinc-400">{item.attributesLabel}</div>}
+                  {item.attributesLabel && <div className="text-xs text-muted">{item.attributesLabel}</div>}
                   {exceeds && <div className="text-xs">Supera stock disponible ({item.stockAvailable})</div>}
                 </td>
                 <td className="py-1.5 text-right">
@@ -61,7 +61,7 @@ export function CartTable({
                         e.stopPropagation();
                         onIncrement(item.lineId, -1);
                       }}
-                      className="h-6 w-6 rounded border border-zinc-300 dark:border-zinc-700"
+                      className="h-6 w-6 rounded border border-border  "
                     >
                       −
                     </button>
@@ -70,7 +70,7 @@ export function CartTable({
                       value={item.quantity}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => onSetQuantity(item.lineId, Number(e.target.value))}
-                      className="w-12 rounded border border-zinc-300 text-center dark:border-zinc-700 dark:bg-zinc-900"
+                      className="w-12 rounded border border-border text-center   bg-surface"
                     />
                     <button
                       type="button"
@@ -78,7 +78,7 @@ export function CartTable({
                         e.stopPropagation();
                         onIncrement(item.lineId, 1);
                       }}
-                      className="h-6 w-6 rounded border border-zinc-300 dark:border-zinc-700"
+                      className="h-6 w-6 rounded border border-border  "
                     >
                       +
                     </button>

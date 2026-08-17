@@ -75,6 +75,7 @@ export interface Product {
   barcode: string | null;
   name: string;
   description: string | null;
+  imageUrl: string | null;
   type: ProductType;
   costPrice: string;
   price: string;
@@ -427,6 +428,7 @@ export interface WooCommerceConfig {
   apiUrl: string;
   syncStockOutbound: boolean;
   syncStockInbound: boolean;
+  syncPriceOutbound: boolean;
   isActive: boolean;
   lastSyncAt: string | null;
   webhookUrl: string;
@@ -440,6 +442,7 @@ export interface CreateWooConfigInput {
   webhookSecret: string;
   syncStockOutbound?: boolean;
   syncStockInbound?: boolean;
+  syncPriceOutbound?: boolean;
   isActive?: boolean;
 }
 
@@ -450,6 +453,7 @@ export interface UpdateWooConfigInput {
   webhookSecret?: string;
   syncStockOutbound?: boolean;
   syncStockInbound?: boolean;
+  syncPriceOutbound?: boolean;
   isActive?: boolean;
 }
 

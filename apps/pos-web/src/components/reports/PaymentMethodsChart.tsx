@@ -23,7 +23,7 @@ export function PaymentMethodsChart({ breakdown }: { breakdown: PaymentMethodBre
   };
 
   if (breakdown.length === 0) {
-    return <p className="py-12 text-center text-sm text-zinc-400">Sin cobros en el período seleccionado.</p>;
+    return <p className="py-12 text-center text-sm text-muted">Sin cobros en el período seleccionado.</p>;
   }
 
   return (
@@ -50,7 +50,7 @@ export function PaymentMethodsChart({ breakdown }: { breakdown: PaymentMethodBre
 
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800">
+          <tr className="border-b border-border text-muted  ">
             <th className="py-1.5"></th>
             <th className="py-1.5">Medio</th>
             <th className="py-1.5 text-right">Operaciones</th>
@@ -60,7 +60,7 @@ export function PaymentMethodsChart({ breakdown }: { breakdown: PaymentMethodBre
         </thead>
         <tbody>
           {breakdown.map((entry) => (
-            <tr key={entry.method} className="border-b border-zinc-100 dark:border-zinc-900">
+            <tr key={entry.method} className="border-b border-border  ">
               <td className="py-1.5">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
@@ -70,7 +70,7 @@ export function PaymentMethodsChart({ breakdown }: { breakdown: PaymentMethodBre
               <td className="py-1.5">{PAYMENT_METHOD_LABELS[entry.method] ?? entry.method}</td>
               <td className="py-1.5 text-right">{entry.count}</td>
               <td className="py-1.5 text-right">{formatMoney(entry.total)}</td>
-              <td className="py-1.5 text-right text-zinc-500">{formatPercentage(entry.percentage)}</td>
+              <td className="py-1.5 text-right text-muted">{formatPercentage(entry.percentage)}</td>
             </tr>
           ))}
         </tbody>

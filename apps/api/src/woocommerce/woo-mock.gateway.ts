@@ -19,11 +19,18 @@ export interface RecordedStockUpdate {
   quantity: number;
 }
 
+export interface RecordedPriceUpdate {
+  remoteProductId: number;
+  variationId?: number;
+  price: number;
+}
+
 const FORCE_FAIL_API_URL_MARKER = 'force-fail.invalid';
 
 @Injectable()
 export class WooMockGateway implements WooGateway {
   readonly recordedUpdates: RecordedStockUpdate[] = [];
+  readonly recordedPriceUpdates: RecordedPriceUpdate[] = [];
   private readonly catalog = new Map<number, WooRemoteProduct>();
   private readonly variations = new Map<number, WooRemoteVariation[]>();
 
@@ -67,6 +74,16 @@ export class WooMockGateway implements WooGateway {
     variationId?: number,
   ): Promise<void> {
     this.recordedUpdates.push({ remoteProductId, variationId, quantity });
+    return Promise.resolve();
+  }
+
+  updatePrice(
+    _credential: WooCredentialInput,
+    remoteProductId: number,
+    price: number,
+    variationId?: number,
+  ): Promise<void> {
+    this.recordedPriceUpdates.push({ remoteProductId, variationId, price });
     return Promise.resolve();
   }
 }

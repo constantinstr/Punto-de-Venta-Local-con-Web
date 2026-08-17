@@ -47,9 +47,7 @@ export class InvoicesService {
     if (!requestedType || requestedType === 'TICKET_X') {
       return this.issueTicketXWithRetry(tenantId, dto);
     }
-    return withTenantContext(tenantId, (tx) =>
-      this.issueFiscal(tx, tenantId, dto, requestedType),
-    );
+    return this.issueFiscal(tenantId, dto, requestedType);
   }
 
   async findOne(tenantId: string, id: string) {
@@ -141,56 +139,72 @@ export class InvoicesService {
   // AFIP un segundo comprobante real duplicado. Ver el catch de abajo:
   // ante cualquier falla después de tener un CAE, se deja rastro explícito
   // en vez de perderlo en silencio.
+  // A diferencia de issueTicketX, esto NO corre entero dentro de una sola
+  // transacción Prisma: la ida y vuelta real a AFIP (WSAA + WSFE) puede
+  // tardar varios segundos, más que el timeout por defecto de una
+  // transacción interactiva (5s) — si se supera, Prisma cierra la
+  // transacción sola y hasta el catch que intenta guardar el motivo del
+  // rechazo falla en cascada (visto en la práctica: un 500 crudo en vez de
+  // un Invoice con status=REJECTED). Se carga/valida todo en una
+  // transacción corta, se llama a AFIP fuera de cualquier transacción, y
+  // se persiste el resultado en una segunda transacción corta.
   private async issueFiscal(
-    tx: TransactionClient,
     tenantId: string,
     dto: CreateInvoiceDto,
     requestedType: 'FACTURA_A' | 'FACTURA_B',
   ) {
-    const { order, customer } = await this.loadOrderAndCustomer(
-      tx,
-      tenantId,
-      dto,
-    );
+    const prepared = await withTenantContext(tenantId, async (tx) => {
+      const { order, customer } = await this.loadOrderAndCustomer(
+        tx,
+        tenantId,
+        dto,
+      );
 
-    const fiscalConfig = await tx.fiscalConfig.findFirst({
-      where: { storeId: order.storeId, tenantId },
+      const fiscalConfig = await tx.fiscalConfig.findFirst({
+        where: { storeId: order.storeId, tenantId },
+      });
+      if (!fiscalConfig) {
+        throw new BadRequestException(
+          'El local no tiene configuración fiscal cargada — no se puede facturar',
+        );
+      }
+
+      const finalType = determineInvoiceType(
+        fiscalConfig.taxCondition,
+        customer?.taxCondition,
+      );
+      if (
+        requestedType === 'FACTURA_A' &&
+        finalType !== InvoiceType.FACTURA_A
+      ) {
+        throw new BadRequestException(
+          fiscalConfig.taxCondition === 'MONOTRIBUTO'
+            ? 'Un emisor Monotributo no puede emitir Factura A'
+            : 'Factura A requiere un cliente Responsable Inscripto con CUIT válido',
+        );
+      }
+
+      const docTipo =
+        customer?.docType === 'CUIT'
+          ? AFIP_DOC_TIPO.CUIT
+          : customer?.docType === 'DNI'
+            ? AFIP_DOC_TIPO.DNI
+            : customer?.docType === 'PASAPORTE'
+              ? AFIP_DOC_TIPO.PASAPORTE
+              : AFIP_DOC_TIPO.FINAL_CONSUMER;
+      const docNro = customer?.docNumber ? Number(customer.docNumber) : 0;
+
+      if (
+        finalType === InvoiceType.FACTURA_A &&
+        (docTipo !== AFIP_DOC_TIPO.CUIT || !docNro)
+      ) {
+        throw new BadRequestException('Factura A requiere el CUIT del cliente');
+      }
+
+      return { order, customer, fiscalConfig, finalType, docTipo, docNro };
     });
-    if (!fiscalConfig) {
-      throw new BadRequestException(
-        'El local no tiene configuración fiscal cargada — no se puede facturar',
-      );
-    }
 
-    const finalType = determineInvoiceType(
-      fiscalConfig.taxCondition,
-      customer?.taxCondition,
-    );
-    if (requestedType === 'FACTURA_A' && finalType !== InvoiceType.FACTURA_A) {
-      throw new BadRequestException(
-        fiscalConfig.taxCondition === 'MONOTRIBUTO'
-          ? 'Un emisor Monotributo no puede emitir Factura A'
-          : 'Factura A requiere un cliente Responsable Inscripto con CUIT válido',
-      );
-    }
-
-    const docTipo =
-      customer?.docType === 'CUIT'
-        ? AFIP_DOC_TIPO.CUIT
-        : customer?.docType === 'DNI'
-          ? AFIP_DOC_TIPO.DNI
-          : customer?.docType === 'PASAPORTE'
-            ? AFIP_DOC_TIPO.PASAPORTE
-            : AFIP_DOC_TIPO.FINAL_CONSUMER;
-    const docNro = customer?.docNumber ? Number(customer.docNumber) : 0;
-
-    if (
-      finalType === InvoiceType.FACTURA_A &&
-      (docTipo !== AFIP_DOC_TIPO.CUIT || !docNro)
-    ) {
-      throw new BadRequestException('Factura A requiere el CUIT del cliente');
-    }
-
+    const { order, fiscalConfig, finalType, docTipo, docNro } = prepared;
     const amounts = buildFeCaeAmounts(order.items);
     const cbteTipo = AFIP_CBTE_TIPO[finalType];
     const credential = {
@@ -206,7 +220,7 @@ export class InvoicesService {
       tenantId,
       storeId: order.storeId,
       orderId: order.id,
-      customerId: customer?.id,
+      customerId: prepared.customer?.id,
       invoiceType: finalType,
       ptoVta: fiscalConfig.ptoVta,
       subtotalNeto:
@@ -239,26 +253,30 @@ export class InvoicesService {
       this.logger.error(
         `Fallo de conectividad/protocolo con AFIP al facturar orden ${order.id}: ${String(err)}`,
       );
-      return tx.invoice.create({
-        data: {
-          ...baseData,
-          status: InvoiceStatus.REJECTED,
-          errorMessage: `Error de conexión con AFIP: ${String(err)}`,
-        },
-        include: INVOICE_INCLUDE,
-      });
+      return withTenantContext(tenantId, (tx) =>
+        tx.invoice.create({
+          data: {
+            ...baseData,
+            status: InvoiceStatus.REJECTED,
+            errorMessage: `Error de conexión con AFIP: ${String(err)}`,
+          },
+          include: INVOICE_INCLUDE,
+        }),
+      );
     }
 
     if (!result.approved) {
-      return tx.invoice.create({
-        data: {
-          ...baseData,
-          status: InvoiceStatus.REJECTED,
-          errorMessage: result.observaciones,
-          afipResponse: result.raw as Prisma.InputJsonValue,
-        },
-        include: INVOICE_INCLUDE,
-      });
+      return withTenantContext(tenantId, (tx) =>
+        tx.invoice.create({
+          data: {
+            ...baseData,
+            status: InvoiceStatus.REJECTED,
+            errorMessage: result.observaciones,
+            afipResponse: result.raw as Prisma.InputJsonValue,
+          },
+          include: INVOICE_INCLUDE,
+        }),
+      );
     }
 
     const qrUrl = buildAfipQrUrl({
@@ -276,19 +294,21 @@ export class InvoicesService {
       codAut: Number(result.cae),
     });
 
-    return tx.invoice.create({
-      data: {
-        ...baseData,
-        cbteNro,
-        cae: result.cae,
-        caeVto: result.caeVto,
-        afipQrUrl: qrUrl,
-        status: InvoiceStatus.ISSUED,
-        afipResponse: result.raw as Prisma.InputJsonValue,
-        issuedAt: new Date(),
-      },
-      include: INVOICE_INCLUDE,
-    });
+    return withTenantContext(tenantId, (tx) =>
+      tx.invoice.create({
+        data: {
+          ...baseData,
+          cbteNro,
+          cae: result.cae,
+          caeVto: result.caeVto,
+          afipQrUrl: qrUrl,
+          status: InvoiceStatus.ISSUED,
+          afipResponse: result.raw as Prisma.InputJsonValue,
+          issuedAt: new Date(),
+        },
+        include: INVOICE_INCLUDE,
+      }),
+    );
   }
 
   private async loadOrderAndCustomer(

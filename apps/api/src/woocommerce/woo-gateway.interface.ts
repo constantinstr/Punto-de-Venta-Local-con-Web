@@ -59,4 +59,14 @@ export interface WooGateway {
     quantity: number,
     variationId?: number,
   ): Promise<void>;
+
+  // Precio de venta (regular_price en la REST API de WooCommerce) — mismo
+  // criterio que updateStock: absoluto, no delta, y variationId presente
+  // actualiza la variación en vez del producto simple/padre.
+  updatePrice(
+    credential: WooCredentialInput,
+    remoteProductId: number,
+    price: number,
+    variationId?: number,
+  ): Promise<void>;
 }

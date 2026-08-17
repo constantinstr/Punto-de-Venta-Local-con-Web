@@ -10,7 +10,7 @@ import type {
   StockRow,
   AdjustStockInput,
 } from "@pos/shared-types";
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiPatch, apiDelete, apiPostFile } from "@/lib/api";
 
 export function useCategories() {
   return useQuery({
@@ -77,6 +77,14 @@ export function useUpdateProduct(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: UpdateProductInput) => apiPatch<Product>(`/products/${id}`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products"] }),
+  });
+}
+
+export function useUploadProductImage(productId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => apiPostFile<Product>(`/products/${productId}/image`, file),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products"] }),
   });
 }

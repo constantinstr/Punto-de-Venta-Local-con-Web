@@ -65,7 +65,7 @@ export default function NewProductPage() {
 
   return (
     <div className="mx-auto max-w-2xl p-8 font-sans">
-      <h1 className="mb-6 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Nuevo producto</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-foreground  ">Nuevo producto</h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="flex gap-2">
@@ -76,8 +76,8 @@ export default function NewProductPage() {
               onClick={() => setType(t)}
               className={`rounded-full px-4 py-1.5 text-sm ${
                 type === t
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "border border-zinc-300 dark:border-zinc-700"
+                  ? "bg-accent text-white  "
+                  : "border border-border  "
               }`}
             >
               {t === "SIMPLE" ? "Simple" : t === "VARIABLE" ? "Variable" : "Combo"}
@@ -85,7 +85,7 @@ export default function NewProductPage() {
           ))}
         </div>
 
-        <section className="grid grid-cols-2 gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+        <section className="grid grid-cols-2 gap-4 rounded-lg border border-border p-4  ">
           <Field label="SKU" value={sku} onChange={setSku} required />
           <Field label="Nombre" value={name} onChange={setName} required />
           {type !== "VARIABLE" && (
@@ -96,7 +96,7 @@ export default function NewProductPage() {
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+              className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
             >
               <option value="">Sin categoría</option>
               {categories?.map((c) => (
@@ -113,7 +113,7 @@ export default function NewProductPage() {
             <select
               value={vatCondition}
               onChange={(e) => setVatCondition(e.target.value as VatCondition)}
-              className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+              className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
             >
               {VAT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -141,7 +141,7 @@ export default function NewProductPage() {
         <button
           type="submit"
           disabled={createProduct.isPending}
-          className="rounded bg-zinc-900 px-5 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="rounded bg-accent px-5 py-2 text-sm font-medium text-white disabled:opacity-50  "
         >
           {createProduct.isPending ? "Creando…" : "Crear producto"}
         </button>
@@ -172,7 +172,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         step={type === "number" ? "0.01" : undefined}
-        className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+        className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
       />
     </label>
   );
@@ -188,8 +188,8 @@ function StockSection({
   onChange: (entries: StockEntryInput[]) => void;
 }) {
   return (
-    <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="mb-3 text-sm font-medium text-zinc-500">Stock inicial por local (opcional)</h2>
+    <section className="rounded-lg border border-border p-4  ">
+      <h2 className="mb-3 text-sm font-medium text-muted">Stock inicial por local (opcional)</h2>
       {stores.map((store) => {
         const entry = entries.find((e) => e.storeId === store.id);
         return (
@@ -205,12 +205,12 @@ function StockSection({
                 const rest = entries.filter((x) => x.storeId !== store.id);
                 onChange(e.target.value === "" ? rest : [...rest, { storeId: store.id, quantity }]);
               }}
-              className="w-28 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              className="w-28 rounded border border-border px-2 py-1   bg-surface"
             />
           </div>
         );
       })}
-      {stores.length === 0 && <p className="text-sm text-zinc-400">No hay locales creados todavía.</p>}
+      {stores.length === 0 && <p className="text-sm text-muted">No hay locales creados todavía.</p>}
     </section>
   );
 }
@@ -237,35 +237,35 @@ function VariantsSection({
   }
 
   return (
-    <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <section className="rounded-lg border border-border p-4  ">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-zinc-500">Variantes (talle/color/etc.)</h2>
+        <h2 className="text-sm font-medium text-muted">Variantes (talle/color/etc.)</h2>
         <button type="button" onClick={addVariant} className="text-sm underline">
           + Agregar variante
         </button>
       </div>
 
       {variants.map((v, i) => (
-        <div key={i} className="mb-4 space-y-2 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+        <div key={i} className="mb-4 space-y-2 rounded border border-border p-3  ">
           <div className="flex gap-2">
             <input
               placeholder="SKU"
               value={v.sku}
               onChange={(e) => updateVariant(i, { sku: e.target.value })}
-              className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              className="flex-1 rounded border border-border px-2 py-1 text-sm   bg-surface"
             />
             <input
               placeholder="Código de barras"
               value={v.barcode ?? ""}
               onChange={(e) => updateVariant(i, { barcode: e.target.value })}
-              className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              className="flex-1 rounded border border-border px-2 py-1 text-sm   bg-surface"
             />
             <input
               placeholder="Precio (opcional)"
               type="number"
               value={v.price ?? ""}
               onChange={(e) => updateVariant(i, { price: e.target.value ? Number(e.target.value) : undefined })}
-              className="w-32 rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              className="w-32 rounded border border-border px-2 py-1 text-sm   bg-surface"
             />
             <button type="button" onClick={() => removeVariant(i)} className="text-sm text-red-600">
               Quitar
@@ -281,7 +281,7 @@ function VariantsSection({
             {stores.map((store) => {
               const entry = v.initialStock?.find((e) => e.storeId === store.id);
               return (
-                <label key={store.id} className="flex items-center gap-1 text-xs text-zinc-500">
+                <label key={store.id} className="flex items-center gap-1 text-xs text-muted">
                   {store.name}:
                   <input
                     type="number"
@@ -296,7 +296,7 @@ function VariantsSection({
                           : [...rest, { storeId: store.id, quantity: Number(e.target.value) }];
                       updateVariant(i, { initialStock });
                     }}
-                    className="w-16 rounded border border-zinc-300 px-1 py-0.5 dark:border-zinc-700 dark:bg-zinc-900"
+                    className="w-16 rounded border border-border px-1 py-0.5   bg-surface"
                   />
                 </label>
               );
@@ -304,7 +304,7 @@ function VariantsSection({
           </div>
         </div>
       ))}
-      {variants.length === 0 && <p className="text-sm text-zinc-400">Agregá al menos una variante.</p>}
+      {variants.length === 0 && <p className="text-sm text-muted">Agregá al menos una variante.</p>}
     </section>
   );
 }
@@ -340,13 +340,13 @@ function AttributesEditor({
             placeholder="atributo (ej. color)"
             value={key}
             onChange={(e) => updatePair(i, e.target.value, value)}
-            className="w-32 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-32 rounded border border-border px-2 py-1 text-xs   bg-surface"
           />
           <input
             placeholder="valor (ej. Verde)"
             value={value}
             onChange={(e) => updatePair(i, key, e.target.value)}
-            className="w-32 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-32 rounded border border-border px-2 py-1 text-xs   bg-surface"
           />
           <button type="button" onClick={() => removePair(i)} className="text-xs text-red-600">
             ×
@@ -383,9 +383,9 @@ function BundleSection({
   }
 
   return (
-    <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <section className="rounded-lg border border-border p-4  ">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-zinc-500">Componentes del combo</h2>
+        <h2 className="text-sm font-medium text-muted">Componentes del combo</h2>
         <button type="button" onClick={addItem} className="text-sm underline">
           + Agregar componente
         </button>
@@ -398,7 +398,7 @@ function BundleSection({
             <select
               value={item.componentProductId}
               onChange={(e) => updateItem(i, { componentProductId: e.target.value, componentVariantId: undefined })}
-              className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              className="flex-1 rounded border border-border px-2 py-1   bg-surface"
             >
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -411,7 +411,7 @@ function BundleSection({
               <select
                 value={item.componentVariantId ?? ""}
                 onChange={(e) => updateItem(i, { componentVariantId: e.target.value || undefined })}
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded border border-border px-2 py-1   bg-surface"
               >
                 <option value="">Cualquier variante</option>
                 {product.variants.map((v) => (
@@ -428,7 +428,7 @@ function BundleSection({
               step="0.001"
               value={item.quantity}
               onChange={(e) => updateItem(i, { quantity: Number(e.target.value) })}
-              className="w-20 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              className="w-20 rounded border border-border px-2 py-1   bg-surface"
             />
             <button type="button" onClick={() => removeItem(i)} className="text-red-600">
               Quitar
@@ -436,7 +436,7 @@ function BundleSection({
           </div>
         );
       })}
-      {items.length === 0 && <p className="text-sm text-zinc-400">Agregá al menos un componente.</p>}
+      {items.length === 0 && <p className="text-sm text-muted">Agregá al menos un componente.</p>}
     </section>
   );
 }

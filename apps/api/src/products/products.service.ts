@@ -11,6 +11,7 @@ import {
   type TransactionClient,
 } from '@pos/database';
 import { getAvailableStock } from '../stock/stock-calculation';
+import { WooPriceSyncService } from '../woocommerce/woo-price-sync.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import type { CreateVariantDto } from './dto/create-variant.dto';
@@ -27,6 +28,8 @@ const PRODUCT_INCLUDE = {
 
 @Injectable()
 export class ProductsService {
+  constructor(private readonly wooPriceSyncService: WooPriceSyncService) {}
+
   async create(tenantId: string, dto: CreateProductDto) {
     this.assertTypeShape(dto);
 
@@ -145,7 +148,7 @@ export class ProductsService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateProductDto) {
-    return withTenantContext(tenantId, async (tx) => {
+    const product = await withTenantContext(tenantId, async (tx) => {
       await this.assertProductExists(tx, tenantId, id);
       if (dto.categoryId)
         await this.assertCategoryExists(tx, tenantId, dto.categoryId);
@@ -156,6 +159,30 @@ export class ProductsService {
           include: PRODUCT_INCLUDE,
         }),
       );
+    });
+
+    // Fuera de la transacción a propósito, mismo criterio que
+    // WooStockSyncService: encolar sync de WooCommerce nunca debe poder
+    // hacer fallar (ni demorar) una edición de catálogo ya guardada.
+    if (dto.price !== undefined) {
+      await this.wooPriceSyncService.enqueuePriceSync(
+        tenantId,
+        id,
+        Number(product.price),
+      );
+    }
+
+    return product;
+  }
+
+  async updateImage(tenantId: string, id: string, imageUrl: string) {
+    return withTenantContext(tenantId, async (tx) => {
+      await this.assertProductExists(tx, tenantId, id);
+      return tx.product.update({
+        where: { id },
+        data: { imageUrl },
+        include: PRODUCT_INCLUDE,
+      });
     });
   }
 

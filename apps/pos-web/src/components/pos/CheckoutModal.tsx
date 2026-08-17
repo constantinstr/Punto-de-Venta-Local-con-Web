@@ -171,7 +171,7 @@ export function CheckoutModal({
 
   if (completedOrder) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:hidden">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4 print:hidden">
         {invoice && (
           <ThermalReceipt
             order={completedOrder}
@@ -181,30 +181,30 @@ export function CheckoutModal({
             paperSize={paperSize}
           />
         )}
-        <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-6 text-center dark:bg-zinc-900">
+        <div className="w-full max-w-sm space-y-4 rounded-lg bg-surface p-6 text-center bg-surface">
           <div className="text-4xl">✓</div>
           <h2 className="text-lg font-medium">Venta #{completedOrder.orderNumber} registrada</h2>
-          <div className="space-y-1 text-sm text-zinc-500">
+          <div className="space-y-1 text-sm text-muted">
             <div className="flex justify-between">
               <span>Total</span>
-              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+              <span className="font-medium text-foreground  ">
                 ${Number(completedOrder.total).toLocaleString("es-AR")}
               </span>
             </div>
             {change > 0 && (
               <div className="flex justify-between">
                 <span>Vuelto</span>
-                <span className="font-medium text-zinc-900 dark:text-zinc-50">${change.toLocaleString("es-AR")}</span>
+                <span className="font-medium text-foreground  ">${change.toLocaleString("es-AR")}</span>
               </div>
             )}
           </div>
 
-          <div className="space-y-2 rounded bg-zinc-100 p-3 text-left text-sm dark:bg-zinc-800">
-            {issuingInvoice && <p className="text-zinc-500">Emitiendo comprobante…</p>}
+          <div className="space-y-2 rounded bg-accent-muted p-3 text-left text-sm bg-accent-muted">
+            {issuingInvoice && <p className="text-muted">Emitiendo comprobante…</p>}
             {invoice && invoice.status === "ISSUED" && (
               <>
                 <p className="font-medium">{FISCAL_OPTION_LABELS[fiscalType] ?? invoice.invoiceType} emitido</p>
-                {invoice.cae && <p className="text-xs text-zinc-500">CAE {invoice.cae}</p>}
+                {invoice.cae && <p className="text-xs text-muted">CAE {invoice.cae}</p>}
               </>
             )}
             {invoice && invoice.status === "REJECTED" && (
@@ -241,13 +241,13 @@ export function CheckoutModal({
               </>
             )}
             {invoice && (
-              <div className="flex gap-2 pt-1 text-xs text-zinc-500">
+              <div className="flex gap-2 pt-1 text-xs text-muted">
                 {(["58mm", "80mm", "A4"] as const).map((size) => (
                   <button
                     key={size}
                     type="button"
                     onClick={() => setPaperSize(size)}
-                    className={paperSize === size ? "font-medium text-zinc-900 underline dark:text-zinc-50" : "underline"}
+                    className={paperSize === size ? "font-medium text-foreground underline  " : "underline"}
                   >
                     {size}
                   </button>
@@ -268,7 +268,7 @@ export function CheckoutModal({
               type="button"
               onClick={() => window.print()}
               disabled={!invoice}
-              className="rounded border border-zinc-300 py-2 disabled:opacity-50 dark:border-zinc-700"
+              className="rounded border border-border py-2 disabled:opacity-50  "
             >
               Imprimir comprobante
             </button>
@@ -279,15 +279,15 @@ export function CheckoutModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md space-y-4 rounded-lg bg-white p-6 dark:bg-zinc-900"
+        className="w-full max-w-md space-y-4 rounded-lg bg-surface p-6 bg-surface"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-medium">Cobrar</h2>
 
-        <div className="flex items-baseline justify-between rounded bg-zinc-100 p-3 dark:bg-zinc-800">
-          <span className="text-sm text-zinc-500">Total a cobrar</span>
+        <div className="flex items-baseline justify-between rounded bg-accent-muted p-3 bg-accent-muted">
+          <span className="text-sm text-muted">Total a cobrar</span>
           <span className="text-2xl font-bold">${totals.total.toLocaleString("es-AR")}</span>
         </div>
 
@@ -297,7 +297,7 @@ export function CheckoutModal({
               <select
                 value={p.method}
                 onChange={(e) => updateLine(i, { method: e.target.value as PaymentMethod })}
-                className="rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                className="rounded border border-border px-2 py-1.5 text-sm   bg-surface"
               >
                 {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -311,14 +311,14 @@ export function CheckoutModal({
                 step="0.01"
                 value={p.amount}
                 onChange={(e) => updateLine(i, { amount: Number(e.target.value) })}
-                className="w-28 rounded border border-zinc-300 px-2 py-1.5 text-right text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                className="w-28 rounded border border-border px-2 py-1.5 text-right text-sm   bg-surface"
               />
               {p.method !== "CASH" && (
                 <input
                   placeholder="Nro. operación"
                   value={p.reference ?? ""}
                   onChange={(e) => updateLine(i, { reference: e.target.value })}
-                  className="flex-1 rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                  className="flex-1 rounded border border-border px-2 py-1.5 text-sm   bg-surface"
                 />
               )}
               {payments.length > 1 && (
@@ -334,7 +334,7 @@ export function CheckoutModal({
         </div>
 
         <div className="space-y-1 text-sm">
-          <div className="flex justify-between text-zinc-500">
+          <div className="flex justify-between text-muted">
             <span>Pagado</span>
             <span>${paid.toLocaleString("es-AR")}</span>
           </div>
@@ -353,7 +353,7 @@ export function CheckoutModal({
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm text-zinc-500">Comprobante</p>
+          <p className="text-sm text-muted">Comprobante</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {(Object.keys(FISCAL_OPTION_LABELS) as RequestedInvoiceType[]).map((option) => {
               const disabled = option !== "TICKET_X" && !fiscalConfig;
@@ -372,7 +372,7 @@ export function CheckoutModal({
             })}
           </div>
           {!fiscalConfig && (
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-muted">
               Este local no tiene configuración fiscal cargada — solo se puede emitir Ticket.
             </p>
           )}
@@ -383,13 +383,13 @@ export function CheckoutModal({
                 value={cuit}
                 onChange={(e) => setCuit(e.target.value.replace(/\D/g, ""))}
                 maxLength={11}
-                className="w-32 rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                className="w-32 rounded border border-border px-2 py-1.5 text-sm   bg-surface"
               />
               <input
                 placeholder="Razón social"
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
-                className="flex-1 rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                className="flex-1 rounded border border-border px-2 py-1.5 text-sm   bg-surface"
               />
             </div>
           )}

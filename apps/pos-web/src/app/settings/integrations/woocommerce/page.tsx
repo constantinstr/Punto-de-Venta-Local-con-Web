@@ -22,7 +22,7 @@ const DIRECTION_LABELS: Record<string, string> = {
 const STATUS_STYLES: Record<string, string> = {
   SUCCESS: "text-green-700 dark:text-green-400",
   FAILED: "text-red-600 dark:text-red-400",
-  PENDING: "text-zinc-500",
+  PENDING: "text-muted",
 };
 
 export default function WooCommerceSettingsPage() {
@@ -36,16 +36,16 @@ export default function WooCommerceSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8 p-8 font-sans">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Integración WooCommerce</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Sincronización bidireccional de stock entre este local y tu tienda WooCommerce.
+        <h1 className="text-2xl font-semibold text-foreground  ">Integración WooCommerce</h1>
+        <p className="mt-1 text-sm text-muted">
+          Sincronización bidireccional de stock, y de precio hacia la tienda, entre este local y tu tienda WooCommerce.
         </p>
       </div>
 
       <select
         value={storeId}
         onChange={(e) => setStoreId(e.target.value)}
-        className="rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+        className="rounded border border-border px-3 py-2 text-sm   bg-surface"
       >
         <option value="">Elegí un local…</option>
         {stores?.map((s) => (
@@ -55,8 +55,8 @@ export default function WooCommerceSettingsPage() {
         ))}
       </select>
 
-      {!storeId && <p className="text-sm text-zinc-400">Seleccioná el local que va a recibir el stock de la tienda online.</p>}
-      {storeId && isLoading && <p className="text-sm text-zinc-400">Cargando…</p>}
+      {!storeId && <p className="text-sm text-muted">Seleccioná el local que va a recibir el stock de la tienda online.</p>}
+      {storeId && isLoading && <p className="text-sm text-muted">Cargando…</p>}
 
       {storeId && !isLoading && !config && <CreateConfigForm storeId={storeId} />}
       {storeId && !isLoading && config && <ConfigPanel storeId={storeId} config={config} />}
@@ -85,8 +85,8 @@ function CreateConfigForm({ storeId }: { storeId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
-      <h2 className="font-medium text-zinc-700 dark:text-zinc-300">Este local todavía no tiene una integración configurada</h2>
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-border p-4 text-sm  ">
+      <h2 className="font-medium text-foreground  ">Este local todavía no tiene una integración configurada</h2>
       <label className="block">
         URL de la tienda
         <input
@@ -94,7 +94,7 @@ function CreateConfigForm({ storeId }: { storeId: string }) {
           onChange={(e) => setApiUrl(e.target.value)}
           placeholder="https://mitienda.com"
           required
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
         />
       </label>
       <label className="block">
@@ -104,7 +104,7 @@ function CreateConfigForm({ storeId }: { storeId: string }) {
           onChange={(e) => setConsumerKey(e.target.value)}
           placeholder="ck_…"
           required
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2 font-mono text-xs   bg-surface"
         />
       </label>
       <label className="block">
@@ -115,7 +115,7 @@ function CreateConfigForm({ storeId }: { storeId: string }) {
           onChange={(e) => setConsumerSecret(e.target.value)}
           placeholder="cs_…"
           required
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2 font-mono text-xs   bg-surface"
         />
       </label>
       <label className="block">
@@ -127,14 +127,14 @@ function CreateConfigForm({ storeId }: { storeId: string }) {
           placeholder="Mínimo 8 caracteres"
           minLength={8}
           required
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2 font-mono text-xs   bg-surface"
         />
       </label>
       {error && <p className="text-red-600">{error}</p>}
       <button
         type="submit"
         disabled={create.isPending}
-        className="rounded bg-zinc-900 px-4 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        className="rounded bg-accent px-4 py-2 text-white disabled:opacity-50  "
       >
         Guardar integración
       </button>
@@ -172,11 +172,11 @@ function ConfigPanel({ storeId, config }: { storeId: string; config: WooCommerce
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+    <div className="space-y-4 rounded-lg border border-border p-4 text-sm  ">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-medium text-zinc-700 dark:text-zinc-300">{config.apiUrl}</p>
-          <p className="text-xs text-zinc-400">
+          <p className="font-medium text-foreground  ">{config.apiUrl}</p>
+          <p className="text-xs text-muted">
             {config.isActive ? "Activa" : "Inactiva"} · Última sincronización:{" "}
             {config.lastSyncAt ? new Date(config.lastSyncAt).toLocaleString("es-AR") : "nunca"}
           </p>
@@ -208,6 +208,14 @@ function ConfigPanel({ storeId, config }: { storeId: string; config: WooCommerce
           />
           Descontar stock cuando venden en la web
         </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={config.syncPriceOutbound}
+            onChange={(e) => update.mutate({ syncPriceOutbound: e.target.checked })}
+          />
+          Sincronizar precio del local hacia la web
+        </label>
       </div>
 
       <label className="block text-xs">
@@ -216,7 +224,7 @@ function ConfigPanel({ storeId, config }: { storeId: string; config: WooCommerce
           readOnly
           value={config.webhookUrl}
           onFocus={(e) => e.target.select()}
-          className="mt-1 w-full rounded border border-zinc-300 bg-zinc-50 px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
+          className="mt-1 w-full rounded border border-border px-3 py-2 font-mono text-xs bg-surface"
         />
       </label>
 
@@ -224,20 +232,20 @@ function ConfigPanel({ storeId, config }: { storeId: string; config: WooCommerce
         <button
           onClick={handleTestConnection}
           disabled={testConnection.isPending}
-          className="rounded border border-zinc-300 px-3 py-1.5 disabled:opacity-50 dark:border-zinc-700"
+          className="rounded border border-border px-3 py-1.5 disabled:opacity-50  "
         >
           {testConnection.isPending ? "Probando…" : "Probar conexión"}
         </button>
         <button
           onClick={handleSyncCatalog}
           disabled={syncCatalog.isPending}
-          className="rounded bg-zinc-900 px-3 py-1.5 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="rounded bg-accent px-3 py-1.5 text-white disabled:opacity-50  "
         >
           {syncCatalog.isPending ? "Sincronizando catálogo…" : "Sincronizar catálogo ahora"}
         </button>
       </div>
-      {testResult && <p className="text-xs text-zinc-500">{testResult}</p>}
-      {syncResult && <p className="text-xs text-zinc-500">{syncResult}</p>}
+      {testResult && <p className="text-xs text-muted">{testResult}</p>}
+      {syncResult && <p className="text-xs text-muted">{syncResult}</p>}
     </div>
   );
 }
@@ -248,11 +256,11 @@ function SyncLogPanel() {
 
   return (
     <div>
-      <h2 className="mb-3 text-lg font-medium text-zinc-900 dark:text-zinc-50">Estado de sincronización</h2>
-      {isLoading && <p className="text-sm text-zinc-400">Cargando…</p>}
+      <h2 className="mb-3 text-lg font-medium text-foreground  ">Estado de sincronización</h2>
+      {isLoading && <p className="text-sm text-muted">Cargando…</p>}
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800">
+          <tr className="border-b border-border text-muted  ">
             <th className="py-2">Fecha</th>
             <th className="py-2">Tipo</th>
             <th className="py-2">Dirección</th>
@@ -262,13 +270,13 @@ function SyncLogPanel() {
         </thead>
         <tbody>
           {(logs ?? []).map((log: SyncLog) => (
-            <tr key={log.id} className="border-b border-zinc-100 dark:border-zinc-900">
-              <td className="py-2 text-xs text-zinc-500">{new Date(log.createdAt).toLocaleString("es-AR")}</td>
+            <tr key={log.id} className="border-b border-border  ">
+              <td className="py-2 text-xs text-muted">{new Date(log.createdAt).toLocaleString("es-AR")}</td>
               <td className="py-2">{log.entityType}</td>
               <td className="py-2 text-xs">{DIRECTION_LABELS[log.direction] ?? log.direction}</td>
               <td className={`py-2 font-medium ${STATUS_STYLES[log.status] ?? ""}`}>
                 {log.status}
-                {log.errorMessage && <p className="max-w-xs truncate text-xs font-normal text-zinc-400">{log.errorMessage}</p>}
+                {log.errorMessage && <p className="max-w-xs truncate text-xs font-normal text-muted">{log.errorMessage}</p>}
               </td>
               <td className="py-2 text-right">
                 {log.status === "FAILED" && (
@@ -281,7 +289,7 @@ function SyncLogPanel() {
           ))}
           {(logs ?? []).length === 0 && !isLoading && (
             <tr>
-              <td colSpan={5} className="py-6 text-center text-zinc-400">
+              <td colSpan={5} className="py-6 text-center text-muted">
                 Todavía no hay eventos de sincronización.
               </td>
             </tr>

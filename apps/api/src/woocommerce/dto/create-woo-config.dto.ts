@@ -36,5 +36,9 @@ export class CreateWooConfigDto {
 
   @IsOptional()
   @IsBoolean()
+  syncPriceOutbound?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
 }

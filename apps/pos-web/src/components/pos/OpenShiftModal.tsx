@@ -22,10 +22,10 @@ export function OpenShiftModal({ cashRegister, onOpened }: { cashRegister: CashR
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg bg-white p-6 dark:bg-zinc-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg bg-surface p-6 bg-surface">
         <h2 className="text-lg font-medium">Abrir {cashRegister.name}</h2>
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-muted">
           Ingresá el fondo inicial (efectivo con el que arrancás el turno) para empezar a vender.
         </p>
 
@@ -39,7 +39,7 @@ export function OpenShiftModal({ cashRegister, onOpened }: { cashRegister: CashR
             required
             value={initialAmount}
             onChange={(e) => setInitialAmount(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950"
+            className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
           />
         </label>
 

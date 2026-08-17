@@ -31,12 +31,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-8 font-sans dark:bg-black">
+    <div className="flex min-h-screen items-center justify-center bg-background p-8 font-sans bg-background">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-zinc-200 p-6 dark:border-zinc-800"
+        className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6  "
       >
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Iniciar sesión</h1>
+        <h1 className="text-xl font-semibold text-foreground  ">Iniciar sesión</h1>
 
         <label className="block text-sm">
           Email
@@ -45,7 +45,7 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+            className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
           />
         </label>
 
@@ -56,7 +56,7 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+            className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
           />
         </label>
 
@@ -65,12 +65,12 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="w-full rounded bg-accent py-2 text-sm font-medium text-white disabled:opacity-50  "
         >
           {loading ? "Ingresando…" : "Ingresar"}
         </button>
 
-        <p className="text-center text-sm text-zinc-500">
+        <p className="text-center text-sm text-muted">
           ¿Todavía no tenés cuenta?{" "}
           <Link href="/register" className="underline">
             Registrá tu comercio

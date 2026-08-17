@@ -13,6 +13,7 @@ import { WOO_GATEWAY, type WooGateway } from './woo-gateway.interface';
 import {
   getWooQueueName,
   type OrderInboundJobData,
+  type PriceOutboundJobData,
   type StockOutboundJobData,
   type WooJobData,
 } from './woo-queue.service';
@@ -55,6 +56,9 @@ export class WooWorkerService implements OnModuleInit, OnModuleDestroy {
     if (job.name === 'stock-outbound') {
       return this.processStockOutbound(job.data as StockOutboundJobData);
     }
+    if (job.name === 'price-outbound') {
+      return this.processPriceOutbound(job.data as PriceOutboundJobData);
+    }
     if (job.name === 'order-inbound') {
       return this.processOrderInbound(job.data as OrderInboundJobData);
     }
@@ -62,47 +66,108 @@ export class WooWorkerService implements OnModuleInit, OnModuleDestroy {
     return Promise.resolve();
   }
 
+  // Carga config y guarda el resultado en transacciones cortas separadas —
+  // el fetch() a WooCommerce en medio (processStockOutbound/
+  // processPriceOutbound) puede tardar más que el timeout por defecto de
+  // una transacción interactiva de Prisma (5s), sobre todo contra hostings
+  // compartidos lentos. Envolver todo el flujo en una sola transacción
+  // (como estaba antes) hacía que Prisma la cerrara sola a mitad de camino
+  // y que el propio manejo de errores fallara en cascada al intentar
+  // actualizar el SyncLog sobre una transacción ya expirada.
+  private markSyncLog(
+    tenantId: string,
+    syncLogId: string,
+    status: 'SUCCESS' | 'FAILED',
+    errorMessage: string | null,
+  ) {
+    return withTenantContext(tenantId, (tx) =>
+      tx.syncLog.update({
+        where: { id: syncLogId },
+        data: { status, errorMessage },
+      }),
+    );
+  }
+
   private async processStockOutbound(
     data: StockOutboundJobData,
   ): Promise<void> {
-    await withTenantContext(data.tenantId, async (tx) => {
-      const config = await tx.wooCommerceConfig.findFirst({
+    const config = await withTenantContext(data.tenantId, (tx) =>
+      tx.wooCommerceConfig.findFirst({
         where: { id: data.configId, tenantId: data.tenantId },
-      });
-      if (!config || !config.isActive) {
-        await tx.syncLog.update({
-          where: { id: data.syncLogId },
-          data: {
-            status: 'FAILED',
-            errorMessage: 'La integración de WooCommerce ya no está activa',
-          },
-        });
-        return;
-      }
+      }),
+    );
+    if (!config || !config.isActive) {
+      await this.markSyncLog(
+        data.tenantId,
+        data.syncLogId,
+        'FAILED',
+        'La integración de WooCommerce ya no está activa',
+      );
+      return;
+    }
 
-      try {
-        await this.gateway.updateStock(
-          {
-            apiUrl: config.apiUrl,
-            consumerKey: config.consumerKey,
-            consumerSecret: config.consumerSecret,
-          },
-          data.wooProductId,
-          data.quantity,
-          data.wooVariantId,
-        );
-        await tx.syncLog.update({
-          where: { id: data.syncLogId },
-          data: { status: 'SUCCESS', errorMessage: null },
-        });
-      } catch (err) {
-        await tx.syncLog.update({
-          where: { id: data.syncLogId },
-          data: { status: 'FAILED', errorMessage: String(err) },
-        });
-        throw err; // deja que BullMQ reintente (attempts/backoff en la queue)
-      }
-    });
+    try {
+      await this.gateway.updateStock(
+        {
+          apiUrl: config.apiUrl,
+          consumerKey: config.consumerKey,
+          consumerSecret: config.consumerSecret,
+        },
+        data.wooProductId,
+        data.quantity,
+        data.wooVariantId,
+      );
+      await this.markSyncLog(data.tenantId, data.syncLogId, 'SUCCESS', null);
+    } catch (err) {
+      await this.markSyncLog(
+        data.tenantId,
+        data.syncLogId,
+        'FAILED',
+        String(err),
+      );
+      throw err; // deja que BullMQ reintente (attempts/backoff en la queue)
+    }
+  }
+
+  private async processPriceOutbound(
+    data: PriceOutboundJobData,
+  ): Promise<void> {
+    const config = await withTenantContext(data.tenantId, (tx) =>
+      tx.wooCommerceConfig.findFirst({
+        where: { id: data.configId, tenantId: data.tenantId },
+      }),
+    );
+    if (!config || !config.isActive) {
+      await this.markSyncLog(
+        data.tenantId,
+        data.syncLogId,
+        'FAILED',
+        'La integración de WooCommerce ya no está activa',
+      );
+      return;
+    }
+
+    try {
+      await this.gateway.updatePrice(
+        {
+          apiUrl: config.apiUrl,
+          consumerKey: config.consumerKey,
+          consumerSecret: config.consumerSecret,
+        },
+        data.wooProductId,
+        data.price,
+        data.wooVariantId,
+      );
+      await this.markSyncLog(data.tenantId, data.syncLogId, 'SUCCESS', null);
+    } catch (err) {
+      await this.markSyncLog(
+        data.tenantId,
+        data.syncLogId,
+        'FAILED',
+        String(err),
+      );
+      throw err; // deja que BullMQ reintente (attempts/backoff en la queue)
+    }
   }
 
   private async processOrderInbound(data: OrderInboundJobData): Promise<void> {

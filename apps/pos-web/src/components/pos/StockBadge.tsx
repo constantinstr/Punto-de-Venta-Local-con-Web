@@ -9,7 +9,7 @@ export function StockBadge({
 }) {
   if (isUnlimited) {
     return (
-      <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+      <span className="rounded-full bg-accent-muted px-2 py-0.5 text-xs text-muted  ">
         Sin límite
       </span>
     );

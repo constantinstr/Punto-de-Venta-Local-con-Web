@@ -6,13 +6,17 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   useProduct,
   useUpdateProduct,
+  useUploadProductImage,
   useAddVariant,
   useRemoveVariant,
   useAddBundleItem,
   useRemoveBundleItem,
   useProducts,
 } from "@/hooks/useCatalog";
-import { ApiError } from "@/lib/api";
+import { ApiError, apiFileUrl } from "@/lib/api";
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 const VAT_OPTIONS: { value: VatCondition; label: string }[] = [
   { value: "IVA_21", label: "IVA 21%" },
@@ -28,17 +32,81 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const { data: product, isLoading } = useProduct(id);
 
   if (!user) return null;
-  if (isLoading || !product) return <p className="p-8 text-zinc-400">Cargando…</p>;
+  if (isLoading || !product) return <p className="p-8 text-muted">Cargando…</p>;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-8 font-sans">
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{product.name}</h1>
+      <h1 className="text-2xl font-semibold text-foreground  ">{product.name}</h1>
+
+      <ImagePanel productId={id} imageUrl={product.imageUrl} />
 
       <EditBasicFields productId={id} product={product} />
 
       {product.type === "VARIABLE" && <VariantsPanel productId={id} product={product} />}
       {product.type === "BUNDLE" && <BundlePanel productId={id} product={product} />}
     </div>
+  );
+}
+
+function ImagePanel({ productId, imageUrl }: { productId: string; imageUrl: string | null }) {
+  const upload = useUploadProductImage(productId);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setError("Formato no soportado — usá JPG, PNG o WebP.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError("La imagen no puede superar los 5 MB.");
+      e.target.value = "";
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setPreview(objectUrl);
+    try {
+      await upload.mutateAsync(file);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo subir la imagen");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+      setPreview(null);
+      e.target.value = "";
+    }
+  }
+
+  const displayUrl = preview ?? (imageUrl ? apiFileUrl(imageUrl) : null);
+
+  return (
+    <section className="flex items-center gap-4 rounded-lg border border-border p-4 text-sm  ">
+      <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-surface">
+        {displayUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- imagen dinámica servida por la API, no un asset del build
+          <img src={displayUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-xs text-muted">Sin imagen</span>
+        )}
+      </div>
+      <div>
+        <input
+          type="file"
+          accept={ACCEPTED_IMAGE_TYPES.join(",")}
+          onChange={handleFileChange}
+          disabled={upload.isPending}
+          className="text-xs"
+        />
+        <p className="mt-1 text-xs text-muted">JPG, PNG o WebP, máx. 5 MB.</p>
+        {upload.isPending && <p className="mt-1 text-xs text-muted">Subiendo…</p>}
+        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      </div>
+    </section>
   );
 }
 
@@ -76,13 +144,13 @@ function EditBasicFields({
   }
 
   return (
-    <form onSubmit={handleSave} className="grid grid-cols-2 gap-4 rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+    <form onSubmit={handleSave} className="grid grid-cols-2 gap-4 rounded-lg border border-border p-4 text-sm  ">
       <label className="col-span-2 block">
         Nombre
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
         />
       </label>
       <label className="block">
@@ -91,7 +159,7 @@ function EditBasicFields({
           type="number"
           value={costPrice}
           onChange={(e) => setCostPrice(e.target.value)}
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
         />
       </label>
       <label className="block">
@@ -100,7 +168,7 @@ function EditBasicFields({
           type="number"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
         />
       </label>
       <label className="block">
@@ -108,7 +176,7 @@ function EditBasicFields({
         <select
           value={vatCondition}
           onChange={(e) => setVatCondition(e.target.value as VatCondition)}
-          className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
         >
           {VAT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -122,12 +190,12 @@ function EditBasicFields({
         Activo
       </label>
 
-      {message && <p className="col-span-2 text-zinc-500">{message}</p>}
+      {message && <p className="col-span-2 text-muted">{message}</p>}
 
       <button
         type="submit"
         disabled={update.isPending}
-        className="col-span-2 rounded bg-zinc-900 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        className="col-span-2 rounded bg-accent py-2 text-white disabled:opacity-50  "
       >
         Guardar cambios
       </button>
@@ -163,8 +231,8 @@ function VariantsPanel({
   }
 
   return (
-    <section className="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
-      <h2 className="mb-3 font-medium text-zinc-500">Variantes</h2>
+    <section className="rounded-lg border border-border p-4 text-sm  ">
+      <h2 className="mb-3 font-medium text-muted">Variantes</h2>
       <ul className="mb-4 space-y-1">
         {product.variants.map((v) => (
           <li key={v.id} className="flex items-center justify-between">
@@ -184,23 +252,23 @@ function VariantsPanel({
           value={sku}
           onChange={(e) => setSku(e.target.value)}
           required
-          className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+          className="flex-1 rounded border border-border px-2 py-1   bg-surface"
         />
         <input
           placeholder="atributo"
           value={attrKey}
           onChange={(e) => setAttrKey(e.target.value)}
           required
-          className="w-28 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-28 rounded border border-border px-2 py-1   bg-surface"
         />
         <input
           placeholder="valor"
           value={attrValue}
           onChange={(e) => setAttrValue(e.target.value)}
           required
-          className="w-28 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-28 rounded border border-border px-2 py-1   bg-surface"
         />
-        <button type="submit" className="rounded bg-zinc-900 px-3 text-white dark:bg-zinc-100 dark:text-zinc-900">
+        <button type="submit" className="rounded bg-accent px-3 text-white  ">
           Agregar
         </button>
       </form>
@@ -244,8 +312,8 @@ function BundlePanel({
   }
 
   return (
-    <section className="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
-      <h2 className="mb-3 font-medium text-zinc-500">Componentes del combo</h2>
+    <section className="rounded-lg border border-border p-4 text-sm  ">
+      <h2 className="mb-3 font-medium text-muted">Componentes del combo</h2>
       <ul className="mb-4 space-y-1">
         {product.bundleComponents?.map((item) => (
           <li key={item.id} className="flex items-center justify-between">
@@ -266,7 +334,7 @@ function BundlePanel({
           value={componentProductId}
           onChange={(e) => setComponentProductId(e.target.value)}
           required
-          className="flex-1 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+          className="flex-1 rounded border border-border px-2 py-1   bg-surface"
         >
           <option value="">Elegir producto…</option>
           {candidates.map((c) => (
@@ -281,9 +349,9 @@ function BundlePanel({
           step="0.001"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
-          className="w-20 rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-20 rounded border border-border px-2 py-1   bg-surface"
         />
-        <button type="submit" className="rounded bg-zinc-900 px-3 text-white dark:bg-zinc-100 dark:text-zinc-900">
+        <button type="submit" className="rounded bg-accent px-3 text-white  ">
           Agregar
         </button>
       </form>

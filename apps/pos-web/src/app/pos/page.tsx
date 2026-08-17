@@ -249,13 +249,13 @@ export default function PosPage() {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-50 font-sans dark:bg-black">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-2 text-sm dark:border-zinc-800">
+    <div className="flex h-screen flex-col bg-background font-sans bg-background">
+      <header className="flex items-center justify-between border-b border-border px-4 py-2 text-sm  ">
         <div className="flex items-center gap-4">
           <select
             value={storeId ?? ""}
             onChange={(e) => setStoreId(e.target.value || null)}
-            className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded border border-border px-2 py-1   bg-surface"
           >
             <option value="">Elegí un local…</option>
             {stores?.map((s) => (
@@ -269,7 +269,7 @@ export default function PosPage() {
             <select
               value={cashRegisterId ?? ""}
               onChange={(e) => setCashRegisterId(e.target.value || null)}
-              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              className="rounded border border-border px-2 py-1   bg-surface"
             >
               <option value="">Elegí una caja…</option>
               {cashRegisters?.map((r) => (
@@ -290,7 +290,7 @@ export default function PosPage() {
             </button>
           )}
 
-          <span className="text-zinc-400">{user.fullName}</span>
+          <span className="text-muted">{user.fullName}</span>
         </div>
         <div className="flex items-center gap-4">
           {catalog.usingCachedSnapshot && (
@@ -307,22 +307,22 @@ export default function PosPage() {
       </header>
 
       {!storeId ? (
-        <div className="flex flex-1 items-center justify-center text-zinc-400">
+        <div className="flex flex-1 items-center justify-center text-muted">
           Elegí un local en la barra superior para empezar a vender.
         </div>
       ) : !cashRegisterId ? (
-        <div className="flex flex-1 items-center justify-center text-zinc-400">
+        <div className="flex flex-1 items-center justify-center text-muted">
           Elegí una caja en la barra superior para empezar a vender.
         </div>
       ) : loadingShift ? (
-        <div className="flex flex-1 items-center justify-center text-zinc-400">Consultando el estado de la caja…</div>
+        <div className="flex flex-1 items-center justify-center text-muted">Consultando el estado de la caja…</div>
       ) : !currentShift ? (
         <OpenShiftModal
           cashRegister={cashRegisters!.find((r) => r.id === cashRegisterId)!}
           onOpened={() => undefined}
         />
       ) : !canOperate ? (
-        <div className="flex flex-1 items-center justify-center px-8 text-center text-zinc-400">
+        <div className="flex flex-1 items-center justify-center px-8 text-center text-muted">
           Esta caja la tiene abierta {currentShift.user.fullName}. Pedile a un encargado que la cierre, o elegí otra
           caja.
         </div>
@@ -336,7 +336,7 @@ export default function PosPage() {
                 placeholder="Buscar por nombre o SKU… (F2)"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                className="flex-1 rounded border border-border px-3 py-2 text-sm   bg-surface"
               />
             </div>
 
@@ -346,8 +346,8 @@ export default function PosPage() {
                 onClick={() => setCategoryId(null)}
                 className={`rounded-full px-3 py-1 text-xs ${
                   categoryId === null
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "border border-zinc-300 dark:border-zinc-700"
+                    ? "bg-accent text-white  "
+                    : "border border-border  "
                 }`}
               >
                 Todas
@@ -359,8 +359,8 @@ export default function PosPage() {
                   onClick={() => setCategoryId(c.id)}
                   className={`rounded-full px-3 py-1 text-xs ${
                     categoryId === c.id
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      : "border border-zinc-300 dark:border-zinc-700"
+                      ? "bg-accent text-white  "
+                      : "border border-border  "
                   }`}
                 >
                   {c.name}
@@ -375,7 +375,7 @@ export default function PosPage() {
             </div>
           </section>
 
-          <section className="flex w-2/5 flex-col border-l border-zinc-200 p-4 dark:border-zinc-800">
+          <section className="flex w-2/5 flex-col border-l border-border p-4  ">
             <CartTable
               items={items}
               selectedLineId={selectedLineId}

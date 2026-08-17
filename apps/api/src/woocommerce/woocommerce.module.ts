@@ -6,6 +6,7 @@ import { WooIntegrationController } from './woo-integration.controller';
 import { WooWebhookController } from './woo-webhook.controller';
 import { WooCatalogSyncService } from './woo-catalog-sync.service';
 import { WooStockSyncService } from './woo-stock-sync.service';
+import { WooPriceSyncService } from './woo-price-sync.service';
 import { WooQueueService } from './woo-queue.service';
 import { WooWorkerService } from './woo-worker.service';
 import { SyncLogService } from './sync-log.service';
@@ -29,6 +30,7 @@ import { WOO_GATEWAY } from './woo-gateway.interface';
     WooConfigService,
     WooCatalogSyncService,
     WooStockSyncService,
+    WooPriceSyncService,
     WooQueueService,
     WooWorkerService,
     SyncLogService,
@@ -45,6 +47,6 @@ import { WOO_GATEWAY } from './woo-gateway.interface';
         config.get<string>('WOO_MOCK') === 'true' ? mockGateway : restGateway,
     },
   ],
-  exports: [WooStockSyncService],
+  exports: [WooStockSyncService, WooPriceSyncService],
 })
 export class WooCommerceModule {}

@@ -11,7 +11,7 @@ export function ProductGrid({
   onSelect: (product: CatalogProduct) => void;
 }) {
   if (products.length === 0) {
-    return <p className="p-8 text-center text-zinc-400">No hay productos que coincidan.</p>;
+    return <p className="p-8 text-center text-muted">No hay productos que coincidan.</p>;
   }
 
   return (
@@ -24,13 +24,13 @@ export function ProductGrid({
             type="button"
             onClick={() => onSelect(product)}
             disabled={outOfStock}
-            className="flex flex-col items-start gap-1 rounded-lg border border-zinc-200 p-3 text-left transition hover:border-zinc-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800 dark:hover:border-zinc-600"
+            className="flex flex-col items-start gap-1 rounded-lg border border-border p-3 text-left transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-40    "
           >
             {TYPE_LABELS[product.type] && (
-              <span className="text-[10px] uppercase tracking-wide text-zinc-400">{TYPE_LABELS[product.type]}</span>
+              <span className="text-[10px] uppercase tracking-wide text-muted">{TYPE_LABELS[product.type]}</span>
             )}
-            <span className="line-clamp-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">{product.name}</span>
-            <span className="font-mono text-xs text-zinc-400">{product.sku}</span>
+            <span className="line-clamp-2 text-sm font-medium text-foreground  ">{product.name}</span>
+            <span className="font-mono text-xs text-muted">{product.sku}</span>
             <div className="mt-auto flex w-full items-center justify-between pt-2">
               <span className="text-sm font-semibold">${product.price.toLocaleString("es-AR")}</span>
               <StockBadge quantity={product.totalStock} isUnlimited={product.isUnlimitedStock} />
