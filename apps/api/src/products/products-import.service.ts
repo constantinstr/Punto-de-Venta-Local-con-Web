@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { withTenantContext, VatCondition } from '@pos/database';
 import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
 import { AuditService } from '../audit/audit.service';
+import { BundlePricingService } from './bundle-pricing.service';
 import type { AuthUser } from '../common/types/auth-user';
 
 // v1: solo productos SIMPLE, clave SKU (update si existe, create si no).
@@ -39,6 +40,7 @@ export class ProductsImportService {
   constructor(
     private readonly ecommerceSync: EcommerceSyncService,
     private readonly auditService: AuditService,
+    private readonly bundlePricing: BundlePricingService,
   ) {}
 
   async buildTemplate(): Promise<Buffer> {
@@ -179,6 +181,21 @@ export class ProductsImportService {
 
           targets.push({ productId: product.id, price: row.price });
         }
+
+        // Los combos derivados que contengan alguno de los productos de este
+        // chunk se recalculan acá mismo: importar una lista de precios nueva
+        // es justamente el momento en que un combo se desactualiza.
+        const bundles = await this.bundlePricing.recalculateForComponents(
+          tx,
+          tenantId,
+          targets.map((t) => t.productId),
+        );
+        targets.push(
+          ...bundles.map((b) => ({
+            productId: b.bundleProductId,
+            price: b.price,
+          })),
+        );
 
         await this.auditService.record(tx, tenantId, {
           userId: actor.userId,

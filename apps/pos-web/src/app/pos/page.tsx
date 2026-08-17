@@ -7,7 +7,9 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { usePosCatalog, type CatalogProduct, type SellableUnit } from "@/hooks/usePosCatalog";
 import { useCategories, useStores } from "@/hooks/useCatalog";
 import { useCashRegisters, useCurrentShift } from "@/hooks/useCashShifts";
+import { useMyDiscountLimit } from "@/hooks/useDiscountPolicy";
 import { NetworkStatusBanner } from "@/components/pos/NetworkStatusBanner";
+import { PosMenu } from "@/components/pos/PosMenu";
 import { useCartStore } from "@/stores/useCartStore";
 import { useCashSessionStore } from "@/stores/useCashSessionStore";
 import { computeCartTotals, computeOrderItemsPayload, cartHasStockIssues } from "@/stores/cart-calculations";
@@ -43,11 +45,15 @@ export default function PosPage() {
   const incrementQuantity = useCartStore((s) => s.incrementQuantity);
   const setQuantity = useCartStore((s) => s.setQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
+  const setLineDiscount = useCartStore((s) => s.setLineDiscount);
   const setGlobalDiscount = useCartStore((s) => s.setGlobalDiscount);
   const selectLine = useCartStore((s) => s.selectLine);
   const clearCart = useCartStore((s) => s.clearCart);
 
   const catalog = usePosCatalog(storeId ?? undefined);
+  // El tope real lo aplica el backend; acá solo se avisa antes para no dejar
+  // cargar un descuento que la venta va a rechazar al cobrar.
+  const maxDiscountPercent = useMyDiscountLimit(user?.role);
 
   const cashRegisterId = useCashSessionStore((s) => s.cashRegisterId);
   const setCashRegisterId = useCashSessionStore((s) => s.setCashRegisterId);
@@ -60,6 +66,7 @@ export default function PosPage() {
   const [variantModalProduct, setVariantModalProduct] = useState<CatalogProduct | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cashControlOpen, setCashControlOpen] = useState(false);
+  const [discountEditorLineId, setDiscountEditorLineId] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const online = useNetworkStatus();
@@ -124,6 +131,7 @@ export default function PosPage() {
       stockAvailable: unit.stockAvailable,
       isUnlimitedStock: unit.isUnlimitedStock,
       isBundle: unit.productType === "BUNDLE",
+      bundleComponents: unit.bundleComponents,
     };
   }
 
@@ -206,6 +214,18 @@ export default function PosPage() {
         return;
       }
 
+      if (e.key === "F6") {
+        e.preventDefault();
+        // Sin línea elegida se toma la última cargada, que es lo que el
+        // cajero acaba de escanear y casi siempre lo que quiere descontar.
+        const target = selectedLineId ?? items[items.length - 1]?.lineId ?? null;
+        if (target) {
+          selectLine(target);
+          setDiscountEditorLineId(target);
+        }
+        return;
+      }
+
       if ((e.key === " " || e.key === "F9") && !isEditableElement(e.target)) {
         e.preventDefault();
         if (canOperate && items.length > 0 && !hasStockIssues) setCheckoutOpen(true);
@@ -235,7 +255,7 @@ export default function PosPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    items.length,
+    items,
     hasStockIssues,
     canOperate,
     selectedLineId,
@@ -244,6 +264,7 @@ export default function PosPage() {
     clearCart,
     incrementQuantity,
     removeItem,
+    selectLine,
   ]);
 
   if (!user) return null;
@@ -252,6 +273,8 @@ export default function PosPage() {
     <div className="flex h-screen flex-col bg-background font-sans bg-background">
       <header className="flex items-center justify-between border-b border-border px-4 py-2 text-sm  ">
         <div className="flex items-center gap-4">
+          <PosMenu user={user} cartItemCount={items.length} />
+
           <select
             value={storeId ?? ""}
             onChange={(e) => setStoreId(e.target.value || null)}
@@ -379,14 +402,19 @@ export default function PosPage() {
             <CartTable
               items={items}
               selectedLineId={selectedLineId}
+              maxDiscountPercent={maxDiscountPercent}
+              discountEditorLineId={discountEditorLineId}
               onSelectLine={selectLine}
               onIncrement={incrementQuantity}
               onSetQuantity={setQuantity}
+              onSetLineDiscount={setLineDiscount}
+              onOpenDiscountEditor={setDiscountEditorLineId}
               onRemove={removeItem}
             />
             <CartSummary
               totals={totals}
               globalDiscount={globalDiscount}
+              maxDiscountPercent={maxDiscountPercent}
               onSetGlobalDiscount={setGlobalDiscount}
               onCheckout={() => setCheckoutOpen(true)}
               checkoutDisabled={!canOperate || items.length === 0 || hasStockIssues}

@@ -97,6 +97,20 @@ export interface BundleItem {
   quantity: string;
 }
 
+// Forma liviana que devuelve GET /products (lista y catálogo del POS): solo
+// alcanza para responder "¿qué trae este combo?" en el mostrador. El detalle
+// completo, con ids y SKU de cada componente, viene en GET /products/:id.
+export interface BundleComponentSummary {
+  quantity: string;
+  componentProduct: { name: string };
+  componentVariant: { attributes: Record<string, string> } | null;
+}
+
+// Cómo se fija el precio de un combo. Con DERIVED lo calcula el sistema como
+// la suma de los componentes menos bundleDiscountPercent, y se recalcula solo
+// cuando cambia el precio de un componente.
+export type BundlePricingMode = "MANUAL" | "DERIVED";
+
 export type WooSyncStatus = "SYNCED" | "PENDING" | "ERROR" | "IGNORED";
 
 export interface Product {
@@ -115,9 +129,21 @@ export interface Product {
   trackStock: boolean;
   isActive: boolean;
   variants: ProductVariant[];
-  bundleComponents?: BundleItem[];
+  // La forma liviana, que es la que devuelve GET /products (lista y catálogo
+  // del POS). El detalle completo con ids está en ProductDetail.
+  bundleComponents?: BundleComponentSummary[];
+  bundlePricingMode: BundlePricingMode;
+  bundleDiscountPercent: string | null;
   wooProductId: number | null;
   wooSyncStatus: WooSyncStatus;
+}
+
+// Lo que devuelve GET /products/:id: igual que Product pero con los
+// componentes completos (ids y SKU), que es lo que necesita la pantalla de
+// edición del combo para poder quitarlos. Se separa del listado a propósito:
+// ese payload viaja en cada carga del POS y se guarda en cada terminal.
+export interface ProductDetail extends Omit<Product, "bundleComponents"> {
+  bundleComponents?: BundleItem[];
 }
 
 export interface StockEntryInput {
@@ -166,6 +192,10 @@ export interface UpdateProductInput {
   price?: number;
   vatCondition?: VatCondition;
   isActive?: boolean;
+  // Solo para combos. Con DERIVED el backend rechaza que se mande `price`:
+  // lo calcula él desde los componentes.
+  bundlePricingMode?: BundlePricingMode;
+  bundleDiscountPercent?: number;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -210,6 +240,24 @@ export interface BulkPriceSample {
 export interface BulkPricePreviewResult {
   affectedCount: number;
   sample: BulkPriceSample[];
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// TOPE DE DESCUENTO POR ROL
+// ──────────────────────────────────────────────────────────────────────────
+
+// Que un rol NO tenga fila significa "sin tope". Por eso el listado devuelve
+// solo los roles limitados, y la pantalla completa el resto con "Sin tope".
+export interface DiscountPolicy {
+  id: string;
+  role: UserRole;
+  maxPercent: string;
+}
+
+export interface SetDiscountPolicyInput {
+  role: UserRole;
+  /** null saca el tope. Es distinto de 0, que prohíbe descontar. */
+  maxPercent: number | null;
 }
 
 export interface StockRow {

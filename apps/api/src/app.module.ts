@@ -28,6 +28,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { BillingModule } from './billing/billing.module';
+import { DiscountsModule } from './discounts/discounts.module';
 import { SubscriptionEnforcementInterceptor } from './billing/subscription-enforcement.interceptor';
 
 @Module({
@@ -65,6 +66,7 @@ import { SubscriptionEnforcementInterceptor } from './billing/subscription-enfor
     SuppliersModule,
     PurchasesModule,
     BillingModule,
+    DiscountsModule,
   ],
   controllers: [AppController],
   providers: [

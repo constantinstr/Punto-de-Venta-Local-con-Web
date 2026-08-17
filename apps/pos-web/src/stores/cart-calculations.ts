@@ -38,6 +38,14 @@ function discountAmount(discount: Discount | undefined, base: number): number {
   return Math.min(Math.max(amount, 0), base);
 }
 
+// Descuento PROPIO de una línea, en pesos, sin la porción del descuento
+// global. Es lo que muestra el carrito al lado de cada producto: mezclarle
+// ahí el prorrateo del global haría que el número no coincida con lo que el
+// cajero acaba de tipear.
+export function lineDiscountAmount(item: CartItem): number {
+  return discountAmount(item.discount, item.unitPrice * item.quantity);
+}
+
 interface ComputedLine {
   grossLine: number; // unitPrice * quantity, sin descuentos
   finalAmount: number; // gross - descuento de línea - porción del descuento global

@@ -111,13 +111,29 @@ export default function SaleDetailPage({ params }: { params: Promise<{ id: strin
             <li key={item.id} className="flex justify-between">
               <span>
                 {item.quantity} × {item.productName}
+                {/* Sin esto, una venta con descuento por línea se ve como si
+                    el producto valiera menos de lo que dice el catálogo, y no
+                    hay forma de auditar quién lo autorizó. */}
+                {Number(item.discountAmount) > 0 && (
+                  <span className="ml-2 text-xs text-muted">
+                    (desc. ${Number(item.discountAmount).toLocaleString("es-AR")} sobre $
+                    {Number(item.subtotal).toLocaleString("es-AR")})
+                  </span>
+                )}
               </span>
               <span>${Number(item.total).toLocaleString("es-AR")}</span>
             </li>
           ))}
         </ul>
-        <div className="mt-3 border-t border-border pt-2 text-right font-medium text-foreground">
-          Total: ${Number(order.total).toLocaleString("es-AR")}
+        <div className="mt-3 space-y-1 border-t border-border pt-2 text-right">
+          {Number(order.discountAmount) > 0 && (
+            <div className="text-sm text-muted">
+              Descuentos: -${Number(order.discountAmount).toLocaleString("es-AR")}
+            </div>
+          )}
+          <div className="font-medium text-foreground">
+            Total: ${Number(order.total).toLocaleString("es-AR")}
+          </div>
         </div>
       </section>
 

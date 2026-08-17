@@ -4,10 +4,11 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   MinLength,
 } from 'class-validator';
-import { VatCondition } from '@pos/database';
+import { BundlePricingMode, VatCondition } from '@pos/database';
 
 // El type (SIMPLE/VARIABLE/BUNDLE) no se puede cambiar después de creado —
 // implicaría migrar variantes/combos/stock. Se crea un producto nuevo si
@@ -47,4 +48,16 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // Solo aplican a un producto BUNDLE. Con DERIVED, `price` deja de aceptarse
+  // (lo calcula el sistema) — ver ProductsService.update.
+  @IsOptional()
+  @IsEnum(BundlePricingMode)
+  bundlePricingMode?: BundlePricingMode;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  bundleDiscountPercent?: number;
 }

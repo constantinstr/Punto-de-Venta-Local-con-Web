@@ -1,7 +1,11 @@
 "use client";
 
 import { use, useState } from "react";
-import type { VatCondition } from "@pos/shared-types";
+import type {
+  BundleItem,
+  BundlePricingMode,
+  VatCondition,
+} from "@pos/shared-types";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   useProduct,
@@ -122,8 +126,12 @@ function EditBasicFields({
     price: string;
     vatCondition: VatCondition;
     isActive: boolean;
+    bundlePricingMode: BundlePricingMode;
   };
 }) {
+  // Un combo con precio derivado calcula su precio solo: dejar el campo
+  // editable prometería algo que el backend rechaza.
+  const priceIsDerived = product.bundlePricingMode === "DERIVED";
   const update = useUpdateProduct(productId);
   const [name, setName] = useState(product.name);
   const [costPrice, setCostPrice] = useState(product.costPrice);
@@ -136,7 +144,14 @@ function EditBasicFields({
     e.preventDefault();
     setMessage(null);
     try {
-      await update.mutateAsync({ name, costPrice: Number(costPrice), price: Number(price), vatCondition, isActive });
+      await update.mutateAsync({
+        name,
+        costPrice: Number(costPrice),
+        // Con precio derivado no se manda: lo escribe el recálculo.
+        ...(priceIsDerived ? {} : { price: Number(price) }),
+        vatCondition,
+        isActive,
+      });
       setMessage("Guardado.");
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : "No se pudo guardar");
@@ -167,9 +182,15 @@ function EditBasicFields({
         <input
           type="number"
           value={price}
+          disabled={priceIsDerived}
           onChange={(e) => setPrice(e.target.value)}
-          className="mt-1 w-full rounded border border-border px-3 py-2   bg-surface"
+          className="mt-1 w-full rounded border border-border px-3 py-2 bg-surface disabled:opacity-60"
         />
+        {priceIsDerived && (
+          <span className="mt-1 block text-xs text-muted">
+            Se calcula desde los componentes (abajo).
+          </span>
+        )}
       </label>
       <label className="block">
         IVA
@@ -277,27 +298,53 @@ function VariantsPanel({
   );
 }
 
+function money(n: number): string {
+  return `$${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function BundlePanel({
   productId,
   product,
 }: {
   productId: string;
   product: {
-    bundleComponents?: {
-      id: string;
-      componentProduct: { name: string; sku: string };
-      componentVariant: { attributes: Record<string, string> } | null;
-      quantity: string;
-    }[];
+    price: string;
+    bundlePricingMode: BundlePricingMode;
+    bundleDiscountPercent: string | null;
+    bundleComponents?: BundleItem[];
   };
 }) {
   const addItem = useAddBundleItem(productId);
   const removeItem = useRemoveBundleItem();
+  const update = useUpdateProduct(productId);
   const { data: allProducts } = useProducts({});
   const candidates = (allProducts ?? []).filter((p) => p.type !== "BUNDLE" && p.id !== productId);
   const [componentProductId, setComponentProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [error, setError] = useState<string | null>(null);
+
+  const components = product.bundleComponents ?? [];
+  const derived = product.bundlePricingMode === "DERIVED";
+  const [discountPercent, setDiscountPercent] = useState(
+    product.bundleDiscountPercent ?? "0",
+  );
+
+  // El precio de cada componente ya viene en el detalle del producto: solo
+  // faltaba mostrarlo. Se busca en el listado porque BundleItem trae el
+  // nombre y el SKU del componente pero no su precio.
+  const priceBySku = new Map(
+    (allProducts ?? []).map((p) => [p.sku, Number(p.price)]),
+  );
+  const lines = components.map((item) => {
+    const unit = priceBySku.get(item.componentProduct.sku) ?? 0;
+    const qty = Number(item.quantity);
+    return { item, unit, qty, subtotal: unit * qty };
+  });
+  const componentsSum = lines.reduce((sum, l) => sum + l.subtotal, 0);
+  const knownPrices = lines.every((l) => l.unit > 0);
+
+  const previewPrice =
+    componentsSum * (1 - Math.min(Math.max(Number(discountPercent) || 0, 0), 100) / 100);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -311,30 +358,133 @@ function BundlePanel({
     }
   }
 
+  async function saveMode(mode: BundlePricingMode) {
+    setError(null);
+    try {
+      await update.mutateAsync(
+        mode === "DERIVED"
+          ? {
+              bundlePricingMode: "DERIVED",
+              bundleDiscountPercent: Math.min(
+                Math.max(Number(discountPercent) || 0, 0),
+                100,
+              ),
+            }
+          : { bundlePricingMode: "MANUAL" },
+      );
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "No se pudo cambiar el modo de precio",
+      );
+    }
+  }
+
   return (
-    <section className="rounded-lg border border-border p-4 text-sm  ">
+    <section className="rounded-lg border border-border p-4 text-sm">
       <h2 className="mb-3 font-medium text-muted">Componentes del combo</h2>
-      <ul className="mb-4 space-y-1">
-        {product.bundleComponents?.map((item) => (
-          <li key={item.id} className="flex items-center justify-between">
-            <span>
-              {item.componentProduct.name}
-              {item.componentVariant ? ` (${Object.values(item.componentVariant.attributes).join(" / ")})` : ""} ×{" "}
-              {item.quantity}
-            </span>
-            <button onClick={() => removeItem.mutate(item.id)} className="text-red-600">
-              Quitar
-            </button>
-          </li>
-        ))}
-      </ul>
+
+      {components.length === 0 && (
+        <p className="mb-4 text-muted">
+          Todavía no tiene componentes. Agregá al menos uno para poder calcular
+          el precio automáticamente.
+        </p>
+      )}
+
+      {components.length > 0 && (
+        <table className="mb-4 w-full text-left">
+          <tbody>
+            {lines.map(({ item, unit, qty, subtotal }) => (
+              <tr key={item.id} className="border-b border-border last:border-0">
+                <td className="py-1.5">
+                  {item.componentProduct.name}
+                  {item.componentVariant
+                    ? ` (${Object.values(item.componentVariant.attributes).join(" / ")})`
+                    : ""}
+                </td>
+                <td className="py-1.5 text-right tabular-nums text-muted">
+                  {unit > 0 ? money(unit) : "—"} × {qty}
+                </td>
+                <td className="py-1.5 text-right tabular-nums">
+                  {unit > 0 ? money(subtotal) : "—"}
+                </td>
+                <td className="py-1.5 pl-3 text-right">
+                  <button onClick={() => removeItem.mutate(item.id)} className="text-red-600">
+                    Quitar
+                  </button>
+                </td>
+              </tr>
+            ))}
+            <tr className="border-t border-border-strong font-medium">
+              <td className="py-1.5" colSpan={2}>
+                Suma de componentes
+              </td>
+              <td className="py-1.5 text-right tabular-nums">
+                {knownPrices ? money(componentsSum) : "—"}
+              </td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      )}
+
+      {/* El punto de todo esto: en un país donde los precios se mueven todos
+          los meses, un combo con precio escrito a mano se desactualiza sin que
+          nadie se entere, y termina vendiéndose por debajo de sus partes. */}
+      <fieldset className="mb-4 space-y-2 rounded border border-border p-3">
+        <legend className="px-1 text-xs text-muted">Precio del combo</legend>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name="pricing-mode"
+            checked={!derived}
+            onChange={() => void saveMode("MANUAL")}
+            className="accent-[var(--accent)]"
+          />
+          <span>
+            Manual — hoy {money(Number(product.price))}
+          </span>
+        </label>
+
+        <label className="flex flex-wrap items-center gap-2">
+          <input
+            type="radio"
+            name="pricing-mode"
+            checked={derived}
+            disabled={components.length === 0}
+            onChange={() => void saveMode("DERIVED")}
+            className="accent-[var(--accent)]"
+          />
+          <span>Suma de componentes −</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={discountPercent}
+            onChange={(e) => setDiscountPercent(e.target.value)}
+            onBlur={() => derived && void saveMode("DERIVED")}
+            className="w-16 rounded border border-border bg-surface px-2 py-0.5 text-right"
+          />
+          <span>%</span>
+          {knownPrices && components.length > 0 && (
+            <span className="text-muted">→ {money(previewPrice)}</span>
+          )}
+        </label>
+
+        {derived && (
+          <p className="text-xs text-muted">
+            Se actualiza solo cuando cambia el precio de un componente, incluso
+            por actualización masiva o importación de Excel.
+          </p>
+        )}
+      </fieldset>
 
       <form onSubmit={handleAdd} className="flex gap-2">
         <select
           value={componentProductId}
           onChange={(e) => setComponentProductId(e.target.value)}
           required
-          className="flex-1 rounded border border-border px-2 py-1   bg-surface"
+          className="flex-1 rounded border border-border px-2 py-1 bg-surface"
         >
           <option value="">Elegir producto…</option>
           {candidates.map((c) => (
@@ -349,9 +499,9 @@ function BundlePanel({
           step="0.001"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
-          className="w-20 rounded border border-border px-2 py-1   bg-surface"
+          className="w-20 rounded border border-border px-2 py-1 bg-surface"
         />
-        <button type="submit" className="rounded bg-accent px-3 text-white  ">
+        <button type="submit" className="rounded bg-accent px-3 text-accent-foreground">
           Agregar
         </button>
       </form>

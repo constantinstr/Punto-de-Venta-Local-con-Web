@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Category,
   Product,
+  ProductDetail,
   CreateProductInput,
   UpdateProductInput,
   CreateVariantInput,
@@ -89,7 +90,7 @@ export function useProducts(filters: ProductFilters) {
 export function useProduct(id: string | undefined) {
   return useQuery({
     queryKey: ["products", id],
-    queryFn: () => apiGet<Product>(`/products/${id}`),
+    queryFn: () => apiGet<ProductDetail>(`/products/${id}`),
     enabled: Boolean(id),
   });
 }

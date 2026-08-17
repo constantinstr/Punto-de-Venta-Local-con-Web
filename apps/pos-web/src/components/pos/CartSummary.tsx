@@ -12,12 +12,15 @@ const VAT_LABELS: Record<string, string> = {
 export function CartSummary({
   totals,
   globalDiscount,
+  maxDiscountPercent,
   onSetGlobalDiscount,
   onCheckout,
   checkoutDisabled,
 }: {
   totals: CartTotals;
   globalDiscount?: Discount;
+  /** Tope del rol que está vendiendo; null = sin tope configurado. */
+  maxDiscountPercent: number | null;
   onSetGlobalDiscount: (discount: Discount | undefined) => void;
   onCheckout: () => void;
   checkoutDisabled: boolean;
@@ -28,6 +31,17 @@ export function CartSummary({
         <span>Subtotal</span>
         <span>${totals.subtotalBruto.toLocaleString("es-AR")}</span>
       </div>
+
+      {/* Fila propia para los descuentos de línea: antes la de abajo decía
+          "Descuento global" pero mostraba totals.totalDiscount, que incluye
+          los dos. Con descuentos por línea habilitados eso sería directamente
+          un número equivocado. */}
+      {totals.lineDiscountsTotal > 0 && (
+        <div className="flex justify-between text-sm text-muted">
+          <span>Descuentos por producto</span>
+          <span>-${totals.lineDiscountsTotal.toLocaleString("es-AR")}</span>
+        </div>
+      )}
 
       <div className="flex items-center justify-between text-sm text-muted">
         <label className="flex items-center gap-2">
@@ -56,8 +70,15 @@ export function CartSummary({
             <option value="PERCENTAGE">%</option>
           </select>
         </label>
-        <span>-${totals.totalDiscount.toLocaleString("es-AR")}</span>
+        <span>-${totals.globalDiscountAmount.toLocaleString("es-AR")}</span>
       </div>
+
+      {maxDiscountPercent !== null && (
+        <p className="text-xs text-muted">
+          Tu rol puede descontar hasta {maxDiscountPercent}% por producto y
+          sobre el total.
+        </p>
+      )}
 
       <div className="space-y-1 text-xs text-muted">
         {totals.vatBreakdown.map((v) => (

@@ -7,9 +7,12 @@ export interface Discount {
   value: number;
 }
 
+// Solo para mostrar qué trae un combo en la línea del carrito. No lleva ids a
+// propósito: el descuento de stock de los componentes lo resuelve el backend
+// a partir de BundleItem, así que el POS no necesita conocerlos — y el
+// catálogo del POS (que se guarda como snapshot offline en cada terminal) no
+// los transporta justamente para no engordar ese payload.
 export interface CartBundleComponent {
-  componentProductId: string;
-  componentVariantId?: string | null;
   name: string;
   quantity: number;
 }

@@ -6,12 +6,17 @@ import {
 } from '@nestjs/common';
 import {
   withTenantContext,
+  BundlePricingMode,
   ProductType,
   Prisma,
   type TransactionClient,
 } from '@pos/database';
 import { getAvailableStock } from '../stock/stock-calculation';
 import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
+import {
+  BundlePricingService,
+  type RecalculatedBundle,
+} from './bundle-pricing.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import type { CreateVariantDto } from './dto/create-variant.dto';
@@ -28,7 +33,10 @@ const PRODUCT_INCLUDE = {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly ecommerceSync: EcommerceSyncService) {}
+  constructor(
+    private readonly ecommerceSync: EcommerceSyncService,
+    private readonly bundlePricing: BundlePricingService,
+  ) {}
 
   async create(tenantId: string, dto: CreateProductDto) {
     this.assertTypeShape(dto);
@@ -110,7 +118,23 @@ export class ProductsService {
               }
             : {}),
         },
-        include: { category: true, variants: true },
+        include: {
+          category: true,
+          variants: true,
+          // Versión liviana a propósito: solo el nombre y la cantidad, no el
+          // producto componente entero. Este payload es el que arma el
+          // catálogo del POS y el que se guarda como snapshot offline, así
+          // que cada campo de más viaja en cada carga y se persiste en el
+          // navegador de cada terminal. Alcanza para responder "¿qué trae el
+          // combo?" en el mostrador.
+          bundleComponents: {
+            select: {
+              quantity: true,
+              componentProduct: { select: { name: true } },
+              componentVariant: { select: { attributes: true } },
+            },
+          },
+        },
         orderBy: { name: 'asc' },
       }),
     );
@@ -149,18 +173,66 @@ export class ProductsService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateProductDto) {
-    const product = await withTenantContext(tenantId, async (tx) => {
-      await this.assertProductExists(tx, tenantId, id);
-      if (dto.categoryId)
-        await this.assertCategoryExists(tx, tenantId, dto.categoryId);
-      return this.runUnique(() =>
-        tx.product.update({
-          where: { id },
-          data: dto,
-          include: PRODUCT_INCLUDE,
-        }),
-      );
-    });
+    const { product, recalculated } = await withTenantContext(
+      tenantId,
+      async (tx) => {
+        const existing = await this.assertProductExists(tx, tenantId, id);
+        if (dto.categoryId)
+          await this.assertCategoryExists(tx, tenantId, dto.categoryId);
+
+        const targetMode = dto.bundlePricingMode ?? existing.bundlePricingMode;
+        const willBeDerived =
+          existing.type === ProductType.BUNDLE &&
+          targetMode === BundlePricingMode.DERIVED;
+
+        if (willBeDerived) {
+          await this.bundlePricing.assertCanUseDerived(tx, id);
+          // Un combo con precio derivado no acepta que le escriban el precio:
+          // se perdería en el próximo recálculo y el usuario no entendería
+          // por qué "no se guardó".
+          if (dto.price !== undefined) {
+            throw new BadRequestException(
+              'Este combo calcula su precio desde los componentes. Cambiá el porcentaje de descuento, o pasalo a precio manual.',
+            );
+          }
+        }
+
+        const updated = await this.runUnique(() =>
+          tx.product.update({
+            where: { id },
+            data: dto,
+            include: PRODUCT_INCLUDE,
+          }),
+        );
+
+        // Dos efectos distintos, los dos dentro de la transacción porque son
+        // puro trabajo de base:
+        //  - si este producto ES un combo derivado, se recalcula él;
+        //  - si CAMBIÓ DE PRECIO, se recalculan los combos que lo contienen.
+        const affected: RecalculatedBundle[] = [];
+        const own = await this.bundlePricing.recalculateOne(tx, tenantId, id);
+        if (own) affected.push(own);
+        if (dto.price !== undefined) {
+          affected.push(
+            ...(await this.bundlePricing.recalculateForComponents(
+              tx,
+              tenantId,
+              [id],
+            )),
+          );
+        }
+
+        return {
+          product: affected.some((a) => a.bundleProductId === id)
+            ? await tx.product.findUniqueOrThrow({
+                where: { id },
+                include: PRODUCT_INCLUDE,
+              })
+            : updated,
+          recalculated: affected,
+        };
+      },
+    );
 
     // Fuera de la transacción a propósito, mismo criterio que en las ventas:
     // encolar el sync de las tiendas online nunca debe poder hacer fallar
@@ -170,6 +242,16 @@ export class ProductsService {
         tenantId,
         id,
         Number(product.price),
+      );
+    }
+    // Los combos que se movieron por arrastre también hay que empujarlos: en
+    // la tienda online son productos como cualquier otro.
+    for (const bundle of recalculated) {
+      if (bundle.bundleProductId === id && dto.price !== undefined) continue;
+      await this.ecommerceSync.enqueuePriceSync(
+        tenantId,
+        bundle.bundleProductId,
+        bundle.price,
       );
     }
 
@@ -238,6 +320,9 @@ export class ProductsService {
         bundleProductId,
         dto,
       );
+      // Cambió la composición: si el combo calcula su precio solo, hay que
+      // recalcularlo ya — si no, el componente nuevo no se cobraría.
+      await this.bundlePricing.recalculateOne(tx, tenantId, bundleProductId);
       return tx.bundleItem.findUniqueOrThrow({
         where: { id: item.id },
         include: { componentProduct: true, componentVariant: true },
@@ -253,6 +338,13 @@ export class ProductsService {
       if (!item)
         throw new NotFoundException('Componente de combo no encontrado');
       await tx.bundleItem.delete({ where: { id: bundleItemId } });
+      // Si era el último componente, recalculateOne devuelve el combo a
+      // precio manual conservando el último valor en vez de dejarlo en $0.
+      await this.bundlePricing.recalculateOne(
+        tx,
+        tenantId,
+        item.bundleProductId,
+      );
       return { deleted: true };
     });
   }

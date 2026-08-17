@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeCartTotals, computeOrderItemsPayload, itemExceedsStock, cartHasStockIssues } from "./cart-calculations";
+import {
+  computeCartTotals,
+  computeOrderItemsPayload,
+  itemExceedsStock,
+  cartHasStockIssues,
+  lineDiscountAmount,
+} from "./cart-calculations";
 import type { CartItem } from "./cart-types";
 
 function item(overrides: Partial<CartItem>): CartItem {
@@ -118,5 +124,63 @@ describe("validación de stock", () => {
   it("carrito sin problemas de stock", () => {
     const i = item({ quantity: 2, stockAvailable: 10 });
     expect(cartHasStockIssues([i])).toBe(false);
+  });
+});
+
+// El carrito muestra los dos descuentos como filas separadas, así que la
+// distinción entre lineDiscountsTotal y globalDiscountAmount tiene que ser
+// exacta: antes CartSummary mostraba el total combinado rotulado como
+// "Descuento global", y con descuentos por línea eso pasó a ser un número
+// directamente equivocado.
+describe("descuento de línea + descuento global juntos", () => {
+  const items = [
+    item({ lineId: "a", productId: "a", unitPrice: 1000, quantity: 1, discount: { type: "PERCENTAGE", value: 10 } }),
+    item({ lineId: "b", productId: "b", unitPrice: 500, quantity: 2 }),
+  ];
+
+  it("separa el descuento de línea del global sin contarlos dos veces", () => {
+    const totals = computeCartTotals(items, { type: "FIXED", value: 190 });
+
+    expect(totals.subtotalBruto).toBe(2000);
+    expect(totals.lineDiscountsTotal).toBe(100); // 10% de 1000
+    expect(totals.globalDiscountAmount).toBe(190);
+    // La suma de las dos filas es exactamente lo que se descuenta del total.
+    expect(totals.totalDiscount).toBe(290);
+    expect(totals.total).toBe(1710);
+    expect(totals.lineDiscountsTotal + totals.globalDiscountAmount).toBe(
+      totals.totalDiscount,
+    );
+  });
+
+  it("el payload por línea lleva el descuento propio más su parte del global", () => {
+    const payload = computeOrderItemsPayload(items, { type: "FIXED", value: 190 });
+
+    // Post-descuento-de-línea: a = 900, b = 1000, subtotal 1900.
+    // El global de 190 (10%) se reparte proporcional: 90 a "a", 100 a "b".
+    expect(payload[0].discountAmount).toBe(190); // 100 propio + 90 del global
+    expect(payload[1].discountAmount).toBe(100); // 0 propio + 100 del global
+    // Lo que el backend termina descontando coincide con lo que vio el cajero.
+    const suma = payload.reduce((s, p) => s + p.discountAmount, 0);
+    expect(suma).toBe(290);
+  });
+
+  it("un descuento de línea en pesos se clampea al bruto de esa línea", () => {
+    const totals = computeCartTotals([
+      item({ unitPrice: 100, quantity: 1, discount: { type: "FIXED", value: 500 } }),
+    ]);
+
+    expect(totals.lineDiscountsTotal).toBe(100);
+    expect(totals.total).toBe(0);
+  });
+});
+
+describe("lineDiscountAmount", () => {
+  it("devuelve solo el descuento propio de la línea, sin la parte del global", () => {
+    const linea = item({ unitPrice: 1000, quantity: 1, discount: { type: "PERCENTAGE", value: 25 } });
+    expect(lineDiscountAmount(linea)).toBe(250);
+  });
+
+  it("es cero cuando la línea no tiene descuento propio", () => {
+    expect(lineDiscountAmount(item({ unitPrice: 1000, quantity: 1 }))).toBe(0);
   });
 });

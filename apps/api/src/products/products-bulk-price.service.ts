@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { withTenantContext, Prisma } from '@pos/database';
+import { withTenantContext, BundlePricingMode, Prisma } from '@pos/database';
 import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
 import { AuditService } from '../audit/audit.service';
+import { BundlePricingService } from './bundle-pricing.service';
 import type { AuthUser } from '../common/types/auth-user';
 import { BulkPriceMode, BulkPriceUpdateDto } from './dto/bulk-price-update.dto';
 
@@ -20,6 +21,7 @@ export class ProductsBulkPriceService {
   constructor(
     private readonly ecommerceSync: EcommerceSyncService,
     private readonly auditService: AuditService,
+    private readonly bundlePricing: BundlePricingService,
   ) {}
 
   async preview(
@@ -27,11 +29,7 @@ export class ProductsBulkPriceService {
     dto: BulkPriceUpdateDto,
   ): Promise<{ affectedCount: number; sample: PriceSample[] }> {
     return withTenantContext(tenantId, async (tx) => {
-      const where: Prisma.ProductWhereInput = {
-        tenantId,
-        isActive: true,
-        ...(dto.categoryId ? { categoryId: dto.categoryId } : {}),
-      };
+      const where = this.targetsWhere(tenantId, dto);
       const affectedCount = await tx.product.count({ where });
       const products = await tx.product.findMany({
         where,
@@ -57,11 +55,7 @@ export class ProductsBulkPriceService {
     actor: AuthUser,
     dto: BulkPriceUpdateDto,
   ): Promise<{ updated: number }> {
-    const where: Prisma.ProductWhereInput = {
-      tenantId,
-      isActive: true,
-      ...(dto.categoryId ? { categoryId: dto.categoryId } : {}),
-    };
+    const where = this.targetsWhere(tenantId, dto);
 
     // Lote grande separado del bucle de commit: obtenemos solo los ids acá
     // (lectura rápida) y procesamos el update en chunks propios — evita
@@ -86,10 +80,27 @@ export class ProductsBulkPriceService {
           });
           results.push({ productId: product.id, price: Number(product.price) });
         }
+
+        // Los combos derivados que contengan alguno de estos productos se
+        // recalculan en la misma transacción: es puro trabajo de base.
+        const bundles = await this.bundlePricing.recalculateForComponents(
+          tx,
+          tenantId,
+          chunk.map((t) => t.id),
+        );
+        results.push(
+          ...bundles.map((b) => ({
+            productId: b.bundleProductId,
+            price: b.price,
+          })),
+        );
+
         return results;
       });
       syncTargets.push(...chunkResults);
-      updated += chunkResults.length;
+      // Los combos recalculados no cuentan como "actualizados" por el usuario:
+      // se movieron por arrastre, no por la regla que eligió.
+      updated += chunk.length;
     }
 
     await this.auditService.recordStandalone(tenantId, {
@@ -107,15 +118,37 @@ export class ProductsBulkPriceService {
 
     // Fuera de toda transacción — mismo criterio que el resto de los sync a
     // WooCommerce en este módulo.
-    for (const target of syncTargets) {
-      await this.ecommerceSync.enqueuePriceSync(
-        tenantId,
-        target.productId,
-        target.price,
-      );
+    //
+    // Se deduplica porque un mismo combo puede haberse recalculado en varios
+    // chunks (si sus componentes cayeron en lotes distintos): gana el último
+    // precio calculado, que es el que quedó en la base.
+    const lastPriceById = new Map(
+      syncTargets.map((t) => [t.productId, t.price]),
+    );
+    for (const [productId, price] of lastPriceById) {
+      await this.ecommerceSync.enqueuePriceSync(tenantId, productId, price);
     }
 
     return { updated };
+  }
+
+  // Una sola definición de "a qué productos les pega este aumento", usada por
+  // preview y por apply: si difirieran, la pantalla mostraría un número de
+  // afectados que no es el que termina cambiando.
+  private targetsWhere(
+    tenantId: string,
+    dto: BulkPriceUpdateDto,
+  ): Prisma.ProductWhereInput {
+    return {
+      tenantId,
+      isActive: true,
+      ...(dto.categoryId ? { categoryId: dto.categoryId } : {}),
+      // Los combos con precio derivado quedan afuera del aumento directo: su
+      // precio sale de los componentes, y esos componentes están en este mismo
+      // lote. Aumentarlos acá les aplicaría la suba dos veces — una directa y
+      // otra al recalcular.
+      NOT: { bundlePricingMode: BundlePricingMode.DERIVED },
+    };
   }
 
   private computeNewPrice(oldPrice: number, dto: BulkPriceUpdateDto): number {

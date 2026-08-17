@@ -18,6 +18,8 @@ const PRODUCT: Product = {
   trackStock: true,
   isActive: true,
   variants: [],
+  bundlePricingMode: "MANUAL",
+  bundleDiscountPercent: null,
   wooProductId: null,
   wooSyncStatus: "IGNORED",
 };

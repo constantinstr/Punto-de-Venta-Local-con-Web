@@ -23,6 +23,14 @@ enum UserRole {
   CASHIER // Cajero
 }
 
+// Cómo se fija el precio de un combo. MANUAL es el comportamiento histórico
+// (alguien escribe el precio y queda congelado); DERIVED lo ata a sus
+// componentes. Ver Product.bundlePricingMode.
+enum BundlePricingMode {
+  MANUAL
+  DERIVED
+}
+
 enum ProductType {
   SIMPLE
   VARIABLE
@@ -205,6 +213,7 @@ model Tenant {
   syncLogs           SyncLog[]
   wooCommerceConfigs WooCommerceConfig[]
   tiendanubeConfigs  TiendanubeConfig[]
+  discountPolicies   DiscountPolicy[]
   auditLogs          AuditLog[]
   customerAccountMovements CustomerAccountMovement[]
   suppliers          Supplier[]
@@ -372,12 +381,26 @@ model Product {
   tnProductId   Int?
   tnVariantId   Int?
 
+  // Solo tienen sentido con type=BUNDLE. Con DERIVED, `price` deja de
+  // escribirse a mano: lo recalcula BundlePricingService como la suma de los
+  // componentes menos bundleDiscountPercent, cada vez que cambia el precio de
+  // un componente o la composición del combo. `price` sigue siendo la única
+  // fuente de verdad del precio (la lee el POS, la venta y el sync con las
+  // tiendas online) — lo que cambia es quién la escribe.
+  bundlePricingMode     BundlePricingMode @default(MANUAL)
+  bundleDiscountPercent Decimal?          @db.Decimal(5, 2)
+
   variants                       ProductVariant[]
   stockLevels                    StockLevel[]
   orderItems                     OrderItem[]
   orderItemBundleComponentUsages OrderItemBundleComponent[]
-  bundleComponents               BundleItem[]               @relation("BundleComponent")
-  bundleItems                    BundleItem[]               @relation("BundleParent")
+  // Los dos lados de BundleItem, nombrados por lo que significan. Estaban al
+  // revés: `bundleComponents` apuntaba a "los combos que contienen a este
+  // producto", así que el include de la pantalla de combos traía siempre una
+  // lista vacía y los componentes no se veían nunca. Son nombres de campo del
+  // cliente de Prisma, no columnas: renombrarlos no necesita migración.
+  bundleComponents               BundleItem[]               @relation("BundleParent")
+  partOfBundles                  BundleItem[]               @relation("BundleComponent")
   purchaseItems                  PurchaseItem[]
 
   createdAt DateTime @default(now())
@@ -433,6 +456,10 @@ model BundleItem {
   quantity           Decimal         @default(1) @db.Decimal(12, 3)
 
   @@unique([bundleProductId, componentProductId])
+  // "¿Qué combos contienen este componente?" — la pregunta que hace
+  // BundlePricingService en cada cambio de precio, incluida la actualización
+  // masiva. Sin el índice sería un scan completo por producto tocado.
+  @@index([componentProductId])
 }
 
 // Stock físico por local. product XOR variant debe estar seteado (regla de
@@ -637,6 +664,32 @@ model Payment {
 
   @@index([tenantId])
   @@index([orderId])
+}
+
+// Tope de descuento que puede aplicar cada rol en el mostrador, por comercio.
+//
+// LA AUSENCIA DE FILA SIGNIFICA "SIN TOPE". Es deliberado: instalar esta
+// versión no le cambia el comportamiento a ningún comercio que ya esté
+// operando, y poner un límite es un acto explícito del dueño desde
+// Configuración → Descuentos. La contra es que una instalación nueva arranca
+// sin protección hasta que alguien la configure.
+//
+// El tope se valida en el backend (OrdersService), no solo en la pantalla: un
+// cajero con la consola del navegador abierta puede mandar el POST que quiera.
+model DiscountPolicy {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  role       UserRole
+  // Porcentaje máximo sobre el bruto de la línea (0 = no puede descontar
+  // nada, 100 = sin tope efectivo).
+  maxPercent Decimal  @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, role])
+  @@index([tenantId])
 }
 
 // ──────────────────────────────────────────────────────────────────────────

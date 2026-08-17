@@ -19,6 +19,9 @@ export interface SellableUnit {
   stockAvailable: number;
   isUnlimitedStock: boolean;
   attributes: Record<string, string> | null;
+  // Solo para combos: qué trae, para poder mostrarlo en el carrito sin salir
+  // a buscarlo al catálogo. Viene en la forma liviana de GET /products.
+  bundleComponents?: { name: string; quantity: number }[];
 }
 
 export interface CatalogProduct {
@@ -118,6 +121,7 @@ export function usePosCatalog(storeId: string | undefined) {
         stockAvailable: stock.quantity,
         isUnlimitedStock: stock.isUnlimited,
         attributes: null,
+        bundleComponents: summarizeBundle(product),
       };
       units.push(unit);
       catalogProducts.push({
@@ -148,4 +152,17 @@ export function usePosCatalog(storeId: string | undefined) {
     isLoading: loadingProducts || loadingStock,
     usingCachedSnapshot,
   };
+}
+
+// Los componentes llegan en la forma liviana de GET /products (nombre y
+// cantidad, sin ids). Alcanza para responderle al cliente qué trae el combo;
+// el detalle completo vive en la pantalla del catálogo.
+function summarizeBundle(
+  product: Product,
+): { name: string; quantity: number }[] | undefined {
+  if (product.type !== "BUNDLE" || !product.bundleComponents?.length) return undefined;
+  return product.bundleComponents.map((c) => ({
+    name: c.componentProduct.name,
+    quantity: Number(c.quantity),
+  }));
 }

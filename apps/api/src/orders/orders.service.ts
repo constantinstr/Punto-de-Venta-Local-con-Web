@@ -32,6 +32,7 @@ import type { CancelOrderDto } from './dto/cancel-order.dto';
 import type { FindOrdersQueryDto } from './dto/find-orders-query.dto';
 import type { StockSyncEntry } from '../woocommerce/woo-stock-sync.service';
 import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
+import { DiscountPolicyService } from '../discounts/discount-policy.service';
 
 const VAT_RATE_MAP: Record<VatCondition, number> = {
   IVA_21: 21,
@@ -86,6 +87,7 @@ export class OrdersService {
     private readonly ecommerceSync: EcommerceSyncService,
     private readonly auditService: AuditService,
     private readonly invoicesService: InvoicesService,
+    private readonly discountPolicyService: DiscountPolicyService,
   ) {}
 
   // El número de orden se calcula con MAX+1 dentro de la transacción; el
@@ -127,6 +129,34 @@ export class OrdersService {
     throw lastError;
   }
 
+  // El tope de descuento se valida ACÁ y no solo en la pantalla: un cajero
+  // con la consola del navegador abierta puede armar el POST que quiera, y un
+  // control que solo vive en React no es un control.
+  //
+  // `limit === null` significa que ese rol no tiene tope configurado, que es
+  // el estado por defecto de todo comercio (ver DiscountPolicy en el schema).
+  private assertDiscountWithinLimit(
+    limit: number | null,
+    discount: number,
+    gross: number,
+    productName?: string,
+  ): void {
+    if (limit === null || gross <= 0 || discount <= 0) return;
+
+    const percent = (discount / gross) * 100;
+    // Tolerancia de redondeo: el front prorratea el descuento global entre
+    // líneas y manda importes con dos decimales, así que un tope del 10%
+    // puede llegar como 10.004% sin que nadie haya intentado nada raro.
+    if (percent <= limit + AMOUNT_EPSILON) return;
+
+    const donde = productName
+      ? ` en "${productName}"`
+      : ' en el total de la venta';
+    throw new BadRequestException(
+      `El descuento${donde} (${percent.toFixed(2)}%) supera el máximo permitido para tu rol (${limit}%). Pedile a un encargado que la autorice.`,
+    );
+  }
+
   private async attemptCreate(
     tenantId: string,
     actor: AuthUser,
@@ -161,6 +191,14 @@ export class OrdersService {
       let total = 0;
       const resolvedItems: ResolvedOrderItem[] = [];
 
+      // Tope de descuento del rol que está vendiendo. Se lee una sola vez,
+      // antes del bucle: es la misma política para todas las líneas.
+      const maxDiscountPercent = await this.discountPolicyService.findLimitFor(
+        tx,
+        tenantId,
+        actor.role,
+      );
+
       for (const itemDto of dto.items) {
         const product = await tx.product.findFirst({
           where: { id: itemDto.productId, tenantId, isActive: true },
@@ -184,6 +222,12 @@ export class OrdersService {
         const lineDiscount = Math.min(
           Math.max(itemDto.discountAmount ?? 0, 0),
           grossLine,
+        );
+        this.assertDiscountWithinLimit(
+          maxDiscountPercent,
+          lineDiscount,
+          grossLine,
+          product.name,
         );
         const lineTotal = grossLine - lineDiscount;
         const rate = VAT_RATE_MAP[product.vatCondition];
@@ -274,6 +318,15 @@ export class OrdersService {
         });
       }
 
+      // Además de la validación por línea: sin esto, alguien podría repartir
+      // un descuento grande entre muchas líneas y quedar debajo del tope en
+      // cada una pero muy por encima en el total de la venta.
+      this.assertDiscountWithinLimit(
+        maxDiscountPercent,
+        discountAmount,
+        subtotal,
+      );
+
       const totalPaid = dto.payments.reduce((sum, p) => sum + p.amount, 0);
       if (totalPaid < total - AMOUNT_EPSILON) {
         throw new BadRequestException(
@@ -357,6 +410,35 @@ export class OrdersService {
           orderId: createdOrder.id,
           cashShiftId: dto.cashShiftId,
           userId: actor.userId,
+        });
+      }
+
+      // Solo las ventas CON descuento se auditan: registrar las 500 ventas
+      // limpias del día ahogaría justamente el dato que se quiere encontrar
+      // cuando aparece un faltante de caja.
+      if (discountAmount > 0) {
+        await this.auditService.record(tx, tenantId, {
+          storeId: dto.storeId,
+          userId: actor.userId,
+          userEmail: actor.email,
+          action: 'order.discount',
+          entityType: 'Order',
+          entityId: createdOrder.id,
+          metadata: {
+            orderNumber: createdOrder.orderNumber,
+            subtotal: subtotal.toFixed(2),
+            discountAmount: discountAmount.toFixed(2),
+            discountPercent: ((discountAmount / subtotal) * 100).toFixed(2),
+            maxAllowedPercent: maxDiscountPercent,
+            lines: resolvedItems
+              .filter((i) => i.discountAmount > 0)
+              .map((i) => ({
+                sku: i.sku,
+                name: i.productName,
+                gross: i.subtotal.toFixed(2),
+                discount: i.discountAmount.toFixed(2),
+              })),
+          },
         });
       }
 

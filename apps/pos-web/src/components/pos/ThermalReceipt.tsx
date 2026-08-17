@@ -133,11 +133,22 @@ export function ThermalReceipt({
 
       <div className="my-1 space-y-0.5">
         {order.items.map((item) => (
-          <div key={item.id} className="flex justify-between gap-2">
-            <span className="flex-1 truncate">
-              {item.quantity} x {item.productName}
-            </span>
-            <span>{money(item.total)}</span>
+          <div key={item.id}>
+            <div className="flex justify-between gap-2">
+              <span className="flex-1 truncate">
+                {item.quantity} x {item.productName}
+              </span>
+              <span>{money(item.total)}</span>
+            </div>
+            {/* El descuento por línea se detalla acá y no solo en el total:
+                el cliente tiene que poder ver en qué producto se lo hicieron,
+                que es justamente lo que va a venir a reclamar si no coincide. */}
+            {Number(item.discountAmount) > 0 && (
+              <div className="flex justify-between gap-2 pl-3 text-[0.9em]">
+                <span className="flex-1 truncate">Descuento</span>
+                <span>-{money(item.discountAmount)}</span>
+              </div>
+            )}
           </div>
         ))}
       </div>

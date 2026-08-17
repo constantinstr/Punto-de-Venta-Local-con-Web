@@ -49,6 +49,12 @@ const LINKS: SettingsLink[] = [
     roles: ["OWNER", "ADMIN"],
   },
   {
+    href: "/settings/discounts",
+    label: "Descuentos",
+    description: "Cuánto puede descontar cada rol en el mostrador.",
+    roles: ["OWNER", "ADMIN"],
+  },
+  {
     href: "/settings/appearance",
     label: "Apariencia",
     description: "Tema claro u oscuro de esta computadora.",
