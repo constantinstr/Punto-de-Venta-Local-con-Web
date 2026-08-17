@@ -100,25 +100,29 @@ export function CartTable({
                       onClose={() => onOpenDiscountEditor(null)}
                     />
                   ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectLine(item.lineId);
-                        onOpenDiscountEditor(item.lineId);
-                      }}
-                      className={`mt-0.5 rounded px-1.5 py-0.5 text-xs ${
-                        discount > 0
-                          ? "bg-accent text-accent-foreground"
-                          : "text-muted underline decoration-dotted"
-                      }`}
-                    >
-                      {discount > 0
-                        ? item.discount?.type === "PERCENTAGE"
-                          ? `−${item.discount.value}%`
-                          : `−${money(discount)}`
-                        : "Descuento (F6)"}
-                    </button>
+                    /* Con tope 0 no se ofrece el control: un botón que
+                       siempre termina en error es peor que no tenerlo. */
+                    maxDiscountPercent !== 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectLine(item.lineId);
+                          onOpenDiscountEditor(item.lineId);
+                        }}
+                        className={`mt-0.5 rounded px-1.5 py-0.5 text-xs ${
+                          discount > 0
+                            ? "bg-accent text-accent-foreground"
+                            : "text-muted underline decoration-dotted"
+                        }`}
+                      >
+                        {discount > 0
+                          ? item.discount?.type === "PERCENTAGE"
+                            ? `−${item.discount.value}%`
+                            : `−${money(discount)}`
+                          : "Descuento (F6)"}
+                      </button>
+                    )
                   )}
                 </td>
 
@@ -272,8 +276,10 @@ function DiscountEditor({
 
       {overLimit && (
         <p className="w-full text-xs text-danger">
-          Tu rol puede descontar hasta {maxDiscountPercent}%. Pedile a un
-          encargado que lo autorice.
+          {maxDiscountPercent === 0
+            ? "Tu rol no puede aplicar descuentos."
+            : `Tu rol puede descontar hasta ${maxDiscountPercent}%.`}{" "}
+          Pedile a un encargado que lo autorice.
         </p>
       )}
     </div>

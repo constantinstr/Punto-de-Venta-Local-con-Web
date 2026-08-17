@@ -216,6 +216,7 @@ export default function PosPage() {
 
       if (e.key === "F6") {
         e.preventDefault();
+        if (maxDiscountPercent === 0) return; // ese rol no descuenta
         // Sin línea elegida se toma la última cargada, que es lo que el
         // cajero acaba de escanear y casi siempre lo que quiere descontar.
         const target = selectedLineId ?? items[items.length - 1]?.lineId ?? null;
@@ -265,6 +266,7 @@ export default function PosPage() {
     incrementQuantity,
     removeItem,
     selectLine,
+    maxDiscountPercent,
   ]);
 
   if (!user) return null;

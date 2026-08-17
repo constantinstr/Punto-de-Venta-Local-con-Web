@@ -50,14 +50,18 @@ export function CartSummary({
             type="number"
             min={0}
             placeholder="0"
+            // Con tope 0 el campo queda inerte: cargarlo solo lograría que la
+            // venta se rechace al cobrar, con el cliente esperando.
+            disabled={maxDiscountPercent === 0}
             value={globalDiscount?.value ?? ""}
             onChange={(e) => {
               const value = e.target.value === "" ? undefined : Number(e.target.value);
               onSetGlobalDiscount(value === undefined ? undefined : { type: globalDiscount?.type ?? "FIXED", value });
             }}
-            className="w-20 rounded border border-border px-2 py-0.5 text-right   bg-surface"
+            className="w-20 rounded border border-border px-2 py-0.5 text-right bg-surface disabled:opacity-50"
           />
           <select
+            disabled={maxDiscountPercent === 0}
             value={globalDiscount?.type ?? "FIXED"}
             onChange={(e) =>
               onSetGlobalDiscount(
@@ -75,8 +79,9 @@ export function CartSummary({
 
       {maxDiscountPercent !== null && (
         <p className="text-xs text-muted">
-          Tu rol puede descontar hasta {maxDiscountPercent}% por producto y
-          sobre el total.
+          {maxDiscountPercent === 0
+            ? "Tu rol no puede aplicar descuentos. Pedile a un encargado que los autorice."
+            : `Tu rol puede descontar hasta ${maxDiscountPercent}% por producto y sobre el total.`}
         </p>
       )}
 

@@ -12,8 +12,8 @@ export class SetDiscountPolicyDto {
   @IsEnum(UserRole)
   role!: UserRole;
 
-  // null = sacar el tope (ese rol vuelve a poder descontar sin límite).
-  // Es distinto de 0, que significa "no puede descontar nada".
+  // null = volver al valor por defecto de ese rol (borra la fila). NO es
+  // "sin tope": para eso se manda 100. Y 0 es "no puede descontar nada".
   // ValidateIf deja pasar el null explícito sin que IsNumber lo rechace.
   @IsOptional()
   @ValidateIf((_, value) => value !== null)

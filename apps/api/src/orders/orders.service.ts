@@ -152,8 +152,13 @@ export class OrdersService {
     const donde = productName
       ? ` en "${productName}"`
       : ' en el total de la venta';
+
+    // Con tope 0 el mensaje no es "te pasaste": es que ese rol directamente no
+    // descuenta, y decirle "el máximo es 0%" suena a error del sistema.
     throw new BadRequestException(
-      `El descuento${donde} (${percent.toFixed(2)}%) supera el máximo permitido para tu rol (${limit}%). Pedile a un encargado que la autorice.`,
+      limit === 0
+        ? `Tu rol no puede aplicar descuentos${donde}. Pedile a un encargado que lo autorice.`
+        : `El descuento${donde} (${percent.toFixed(2)}%) supera el máximo permitido para tu rol (${limit}%). Pedile a un encargado que lo autorice.`,
     );
   }
 

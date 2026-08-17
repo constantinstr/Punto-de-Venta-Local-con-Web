@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NO_DISCOUNT_LIMIT } from "@pos/shared-types";
 import type { UserRole } from "@pos/shared-types";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -11,12 +12,18 @@ import { ApiError } from "@/lib/api";
 
 // Los roles que atienden el mostrador. SUPERADMIN no aparece: es staff del
 // SaaS, no opera la caja de ningún comercio.
-const ROLES: { role: UserRole; label: string; hint: string }[] = [
-  { role: "CASHIER", label: "Cajero", hint: "Atiende el mostrador." },
-  { role: "MANAGER", label: "Encargado", hint: "Responsable del local." },
-  { role: "ADMIN", label: "Administrador", hint: "Administra el comercio." },
-  { role: "OWNER", label: "Dueño", hint: "Vos." },
-];
+const ROLE_LABELS: Record<string, { label: string; hint: string }> = {
+  CASHIER: { label: "Cajero", hint: "Atiende el mostrador." },
+  MANAGER: { label: "Encargado", hint: "Responsable del local." },
+  ADMIN: { label: "Administrador", hint: "Administra el comercio." },
+  OWNER: { label: "Dueño", hint: "Vos." },
+};
+
+function describeLimit(maxPercent: number): string {
+  if (maxPercent >= NO_DISCOUNT_LIMIT) return "Sin tope";
+  if (maxPercent === 0) return "No puede descontar";
+  return `Hasta ${maxPercent}%`;
+}
 
 export default function DiscountsSettingsPage() {
   const user = useRequireAuth();
@@ -39,28 +46,27 @@ export default function DiscountsSettingsPage() {
       </div>
 
       <p className="rounded border border-border bg-surface-muted px-4 py-3 text-sm text-muted">
-        Mientras un rol figure <strong>sin tope</strong>, puede descontar lo que
-        quiera. El límite se controla también del lado del servidor, así que no
-        se puede saltear desde el navegador.
+        Los valores marcados como <em>por defecto</em> son los que trae el
+        sistema: el cajero no descuenta y el encargado resuelve hasta 10% sin
+        consultar. Cambiá el que quieras — el límite se controla también del
+        lado del servidor, así que no se puede saltear desde el navegador.
       </p>
 
       {isLoading && <p className="text-sm text-muted">Cargando…</p>}
 
       {!isLoading && (
         <div className="divide-y divide-border rounded-lg border border-border bg-surface">
-          {ROLES.map((r) => {
-            const current = policies?.find((p) => p.role === r.role);
-            return (
-              <RoleRow
-                key={r.role}
-                role={r.role}
-                label={r.label}
-                hint={r.hint}
-                maxPercent={current ? Number(current.maxPercent) : null}
-                canEdit={canEdit}
-              />
-            );
-          })}
+          {policies?.map((p) => (
+            <RoleRow
+              key={p.role}
+              role={p.role}
+              label={ROLE_LABELS[p.role]?.label ?? p.role}
+              hint={ROLE_LABELS[p.role]?.hint ?? ""}
+              maxPercent={p.maxPercent}
+              isDefault={p.isDefault}
+              canEdit={canEdit}
+            />
+          ))}
         </div>
       )}
 
@@ -78,17 +84,19 @@ function RoleRow({
   label,
   hint,
   maxPercent,
+  isDefault,
   canEdit,
 }: {
   role: UserRole;
   label: string;
   hint: string;
-  maxPercent: number | null;
+  maxPercent: number;
+  isDefault: boolean;
   canEdit: boolean;
 }) {
   const save = useSetDiscountPolicy();
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(String(maxPercent ?? ""));
+  const [value, setValue] = useState(String(maxPercent));
   const [error, setError] = useState<string | null>(null);
 
   async function persist(next: number | null) {
@@ -102,6 +110,8 @@ function RoleRow({
       );
     }
   }
+
+  const sinTope = maxPercent >= NO_DISCOUNT_LIMIT;
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -127,7 +137,11 @@ function RoleRow({
             type="button"
             disabled={save.isPending}
             onClick={() =>
-              void persist(value === "" ? null : Math.min(100, Math.max(0, Number(value))))
+              void persist(
+                value === ""
+                  ? null
+                  : Math.min(100, Math.max(0, Number(value))),
+              )
             }
             className="rounded bg-accent px-3 py-1 text-sm text-accent-foreground disabled:opacity-50"
           >
@@ -136,7 +150,7 @@ function RoleRow({
           <button
             type="button"
             onClick={() => {
-              setValue(String(maxPercent ?? ""));
+              setValue(String(maxPercent));
               setEditing(false);
             }}
             className="text-sm text-muted underline"
@@ -145,20 +159,19 @@ function RoleRow({
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span
             className={`rounded-full px-3 py-1 text-sm ${
-              maxPercent === null
+              sinTope
                 ? "bg-warning-muted text-warning"
                 : "bg-success-muted text-success"
             }`}
           >
-            {maxPercent === null
-              ? "Sin tope"
-              : maxPercent === 0
-                ? "No puede descontar"
-                : `Hasta ${maxPercent}%`}
+            {describeLimit(maxPercent)}
           </span>
+          {isDefault && (
+            <span className="text-xs text-muted">(por defecto)</span>
+          )}
           {canEdit && (
             <>
               <button
@@ -168,13 +181,15 @@ function RoleRow({
               >
                 Cambiar
               </button>
-              {maxPercent !== null && (
+              {/* Solo aparece si el comercio se apartó del default: si no,
+                  "restaurar" no haría nada y sería un botón muerto. */}
+              {!isDefault && (
                 <button
                   type="button"
                   onClick={() => void persist(null)}
                   className="text-sm text-muted underline"
                 >
-                  Sacar tope
+                  Restaurar
                 </button>
               )}
             </>

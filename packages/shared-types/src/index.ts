@@ -246,19 +246,29 @@ export interface BulkPricePreviewResult {
 // TOPE DE DESCUENTO POR ROL
 // ──────────────────────────────────────────────────────────────────────────
 
-// Que un rol NO tenga fila significa "sin tope". Por eso el listado devuelve
-// solo los roles limitados, y la pantalla completa el resto con "Sin tope".
+// Si el comercio no configuró nada, cada rol arranca con un tope por defecto
+// (cajero 0%, encargado 10%, administrador y dueño sin tope). El backend
+// devuelve SIEMPRE los cuatro roles con su valor efectivo, así que la pantalla
+// no necesita conocer esos defaults ni rellenar huecos.
 export interface DiscountPolicy {
-  id: string;
   role: UserRole;
-  maxPercent: string;
+  maxPercent: number;
+  /** true = es el valor por defecto, el comercio todavía no decidió otro. */
+  isDefault: boolean;
 }
 
 export interface SetDiscountPolicyInput {
   role: UserRole;
-  /** null saca el tope. Es distinto de 0, que prohíbe descontar. */
+  /**
+   * null vuelve al valor por defecto de ese rol. Para dejarlo SIN TOPE se
+   * manda 100: un descuento nunca puede superar el bruto de la línea, así que
+   * no hay nada más allá del 100%.
+   */
   maxPercent: number | null;
 }
+
+/** Tope con el que un rol deja de tener límite práctico. */
+export const NO_DISCOUNT_LIMIT = 100;
 
 export interface StockRow {
   productId: string | null;

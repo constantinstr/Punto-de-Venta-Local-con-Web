@@ -15,20 +15,58 @@ export const SELLING_ROLES: UserRole[] = [
   UserRole.CASHIER,
 ];
 
+// Tope efectivo cuando el comercio no configuró nada.
+//
+// Vive en código y no como filas sembradas en la base a propósito: así vale
+// para TODOS los comercios —los que ya existían y los que se den de alta
+// mañana— sin migración de datos ni lógica de alta duplicada. Una fila en
+// DiscountPolicy pasa a significar "este comercio decidió otra cosa".
+//
+// El cajero arranca en 0: es el rol al que se le pide autorización para
+// descontar en cualquier comercio, y el descuento de mostrador no autorizado
+// es el desvío de caja más común. El encargado puede resolver el caso normal
+// (10%) sin llamar a nadie. 100 es "sin tope" efectivo: el descuento nunca
+// puede superar el bruto de la línea, así que no hay nada más allá.
+export const NO_LIMIT = 100;
+
+export const DEFAULT_DISCOUNT_LIMITS: Record<string, number> = {
+  [UserRole.CASHIER]: 0,
+  [UserRole.MANAGER]: 10,
+  [UserRole.ADMIN]: NO_LIMIT,
+  [UserRole.OWNER]: NO_LIMIT,
+};
+
+export interface EffectiveDiscountPolicy {
+  role: UserRole;
+  maxPercent: number;
+  /** true = viene del valor por defecto, no de una decisión del comercio. */
+  isDefault: boolean;
+}
+
 @Injectable()
 export class DiscountPolicyService {
-  findAll(tenantId: string) {
-    return withTenantContext(tenantId, (tx) =>
-      tx.discountPolicy.findMany({
-        where: { tenantId },
-        orderBy: { role: 'asc' },
-      }),
+  // Devuelve SIEMPRE los cuatro roles con su tope efectivo, no solo los que
+  // tienen fila. Que la pantalla tenga que saber cuál es el default para
+  // rellenar los huecos sería duplicar la regla en los dos lados.
+  async findAll(tenantId: string): Promise<EffectiveDiscountPolicy[]> {
+    const rows = await withTenantContext(tenantId, (tx) =>
+      tx.discountPolicy.findMany({ where: { tenantId } }),
     );
+    const byRole = new Map(rows.map((r) => [r.role, Number(r.maxPercent)]));
+
+    return SELLING_ROLES.map((role) => {
+      const configured = byRole.get(role);
+      return {
+        role,
+        maxPercent: configured ?? DEFAULT_DISCOUNT_LIMITS[role] ?? NO_LIMIT,
+        isDefault: configured === undefined,
+      };
+    });
   }
 
   // Upsert por rol: la pantalla manda "este rol tiene tope X". Mandar
-  // maxPercent = null saca el tope (borra la fila), que es distinto de
-  // ponerle 0 — 0 significa "no puede descontar nada".
+  // maxPercent = null BORRA la fila, o sea vuelve al valor por defecto —
+  // no significa "sin tope". Para dejar un rol sin tope se manda 100.
   async set(tenantId: string, dto: SetDiscountPolicyDto) {
     if (!SELLING_ROLES.includes(dto.role)) {
       throw new BadRequestException(
@@ -61,7 +99,9 @@ export class DiscountPolicyService {
     });
   }
 
-  // Devuelve el tope del rol, o null si no tiene ninguno.
+  // Tope efectivo del rol: lo que configuró el comercio, o el valor por
+  // defecto. Devuelve null solo para roles que no venden (SUPERADMIN), donde
+  // no hay nada que limitar.
   //
   // Recibe la transacción del caller a propósito: lo usa OrdersService en
   // medio de armar una venta, y abrir una transacción aparte para leer una
@@ -75,6 +115,7 @@ export class DiscountPolicyService {
     const policy = await tx.discountPolicy.findFirst({
       where: { tenantId, role },
     });
-    return policy ? Number(policy.maxPercent) : null;
+    if (policy) return Number(policy.maxPercent);
+    return DEFAULT_DISCOUNT_LIMITS[role] ?? null;
   }
 }

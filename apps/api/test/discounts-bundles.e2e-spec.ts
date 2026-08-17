@@ -136,7 +136,93 @@ describe('Topes de descuento y precio de combos — e2e', () => {
   });
 
   describe('tope de descuento por rol', () => {
-    it('sin política configurada, un cajero puede descontar sin límite', async () => {
+    // Los valores por defecto (cajero 0, encargado 10, admin y dueño sin
+    // tope) valen sin configurar nada y sin sembrar filas: viven en código
+    // justamente para aplicar a todos los comercios, viejos y nuevos.
+    it('un comercio recién dado de alta ya trae los topes por defecto', async () => {
+      const t = await registerTenant(
+        'Tope Default',
+        `tope-def-${suffix}@test.com`,
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/discount-policies')
+        .set(t.auth)
+        .expect(200);
+
+      const body = res.body as {
+        role: string;
+        maxPercent: number;
+        isDefault: boolean;
+      }[];
+      const byRole = new Map(body.map((p) => [p.role, p]));
+
+      expect(byRole.get('CASHIER')?.maxPercent).toBe(0);
+      expect(byRole.get('MANAGER')?.maxPercent).toBe(10);
+      expect(byRole.get('ADMIN')?.maxPercent).toBe(100);
+      expect(byRole.get('OWNER')?.maxPercent).toBe(100);
+      // Ninguno se guardó en la base todavía.
+      expect(body.every((p) => p.isDefault)).toBe(true);
+    });
+
+    it('por defecto un cajero no puede descontar nada', async () => {
+      const t = await registerTenant(
+        'Tope Cero',
+        `tope-cero-${suffix}@test.com`,
+      );
+      const cashierAuth = await createCashier(
+        t.auth,
+        `cajero-cero-${suffix}@test.com`,
+      );
+      const product = await createProduct(
+        t.auth,
+        t.storeId,
+        `CERO-${suffix}`,
+        1000,
+      );
+
+      const regRes = await request(app.getHttpServer())
+        .post('/cash-registers')
+        .set(t.auth)
+        .send({ storeId: t.storeId, name: 'Caja Cero' })
+        .expect(201);
+      const shiftRes = await request(app.getHttpServer())
+        .post('/cash-shifts/open')
+        .set(cashierAuth)
+        .send({
+          cashRegisterId: (regRes.body as IdResponseBody).id,
+          initialAmount: 0,
+        })
+        .expect(201);
+      const cashierShiftId = (shiftRes.body as IdResponseBody).id;
+
+      const rechazada = await request(app.getHttpServer())
+        .post('/orders')
+        .set(cashierAuth)
+        .send({
+          storeId: t.storeId,
+          cashShiftId: cashierShiftId,
+          items: [{ productId: product.id, quantity: 1, discountAmount: 1 }],
+          payments: [{ method: 'CASH', amount: 999 }],
+        })
+        .expect(400);
+      // Con tope 0 el mensaje no habla de "máximo permitido".
+      expect(JSON.stringify(rechazada.body)).toContain('no puede aplicar');
+
+      // Sin descuento, la misma venta pasa.
+      await request(app.getHttpServer())
+        .post('/orders')
+        .set(cashierAuth)
+        .send({
+          storeId: t.storeId,
+          cashShiftId: cashierShiftId,
+          items: [{ productId: product.id, quantity: 1 }],
+          payments: [{ method: 'CASH', amount: 1000 }],
+        })
+        .expect(201);
+    });
+
+    it('el dueño descuenta sin tope por defecto', async () => {
       const t = await registerTenant(
         'Tope Libre',
         `tope-libre-${suffix}@test.com`,
@@ -287,35 +373,96 @@ describe('Topes de descuento y precio de combos — e2e', () => {
         .expect(201);
     });
 
-    it('sacar el tope (maxPercent null) devuelve al rol a descontar libremente', async () => {
+    // maxPercent = null no es "sin tope": es "volvé al valor por defecto".
+    // Para dejar un rol sin tope se manda 100.
+    it('mandar null restaura el valor por defecto del rol', async () => {
       const t = await registerTenant(
-        'Tope Sacar',
-        `tope-sacar-${suffix}@test.com`,
+        'Tope Restaurar',
+        `tope-rest-${suffix}@test.com`,
       );
+
+      async function cashierPolicy() {
+        const res = await request(app.getHttpServer())
+          .get('/discount-policies')
+          .set(t.auth)
+          .expect(200);
+        return (
+          res.body as { role: string; maxPercent: number; isDefault: boolean }[]
+        ).find((p) => p.role === 'CASHIER')!;
+      }
+
+      expect(await cashierPolicy()).toMatchObject({
+        maxPercent: 0,
+        isDefault: true,
+      });
 
       await request(app.getHttpServer())
         .put('/discount-policies')
         .set(t.auth)
-        .send({ role: 'CASHIER', maxPercent: 5 })
+        .send({ role: 'CASHIER', maxPercent: 25 })
         .expect(200);
-
-      let listado = await request(app.getHttpServer())
-        .get('/discount-policies')
-        .set(t.auth)
-        .expect(200);
-      expect(listado.body).toHaveLength(1);
+      expect(await cashierPolicy()).toMatchObject({
+        maxPercent: 25,
+        isDefault: false,
+      });
 
       await request(app.getHttpServer())
         .put('/discount-policies')
         .set(t.auth)
         .send({ role: 'CASHIER', maxPercent: null })
         .expect(200);
+      expect(await cashierPolicy()).toMatchObject({
+        maxPercent: 0,
+        isDefault: true,
+      });
+    });
 
-      listado = await request(app.getHttpServer())
-        .get('/discount-policies')
+    it('un tope de 100 deja al rol sin límite práctico', async () => {
+      const t = await registerTenant(
+        'Tope Cien',
+        `tope-cien-${suffix}@test.com`,
+      );
+      const cashierAuth = await createCashier(
+        t.auth,
+        `cajero-cien-${suffix}@test.com`,
+      );
+      const product = await createProduct(
+        t.auth,
+        t.storeId,
+        `CIEN-${suffix}`,
+        1000,
+      );
+
+      await request(app.getHttpServer())
+        .put('/discount-policies')
         .set(t.auth)
+        .send({ role: 'CASHIER', maxPercent: 100 })
         .expect(200);
-      expect(listado.body).toHaveLength(0);
+
+      const regRes = await request(app.getHttpServer())
+        .post('/cash-registers')
+        .set(t.auth)
+        .send({ storeId: t.storeId, name: 'Caja Cien' })
+        .expect(201);
+      const shiftRes = await request(app.getHttpServer())
+        .post('/cash-shifts/open')
+        .set(cashierAuth)
+        .send({
+          cashRegisterId: (regRes.body as IdResponseBody).id,
+          initialAmount: 0,
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/orders')
+        .set(cashierAuth)
+        .send({
+          storeId: t.storeId,
+          cashShiftId: (shiftRes.body as IdResponseBody).id,
+          items: [{ productId: product.id, quantity: 1, discountAmount: 900 }],
+          payments: [{ method: 'CASH', amount: 100 }],
+        })
+        .expect(201);
     });
   });
 
@@ -579,6 +726,12 @@ describe('Topes de descuento y precio de combos — e2e', () => {
       .get('/discount-policies')
       .set(b.auth)
       .expect(200);
-    expect(desdeB.body).toHaveLength(0);
+    const cajeroDeB = (
+      desdeB.body as { role: string; maxPercent: number; isDefault: boolean }[]
+    ).find((p) => p.role === 'CASHIER')!;
+
+    // B ve su propio valor por defecto, no el 5% que configuró A.
+    expect(cajeroDeB.maxPercent).toBe(0);
+    expect(cajeroDeB.isDefault).toBe(true);
   });
 });
