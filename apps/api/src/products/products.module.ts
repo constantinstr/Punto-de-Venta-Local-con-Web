@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
-import { WooCommerceModule } from '../woocommerce/woocommerce.module';
+import { ProductsImportService } from './products-import.service';
+import { ProductsBulkPriceService } from './products-bulk-price.service';
+import { IntegrationsModule } from '../integrations/integrations.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [WooCommerceModule],
+  imports: [IntegrationsModule, AuditModule],
   controllers: [ProductsController],
-  providers: [ProductsService],
+  providers: [ProductsService, ProductsImportService, ProductsBulkPriceService],
 })
 export class ProductsModule {}

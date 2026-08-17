@@ -231,6 +231,107 @@ Con `WOO_MOCK=true` en el `.env` de `api` este flujo entero corre contra
 
 ---
 
+## 3 bis. Cobro de la suscripción (licencia mensual)
+
+Cómo se cobra el software a cada comercio. Todo el módulo vive en
+`apps/api/src/billing`.
+
+### Por qué no hace falta ninguna "clave de licencia"
+
+El software corre en **tu** servidor: el comercio nunca tiene el código ni la
+base de datos. Eso hace que la licencia sea inviolable por construcción — no
+hay nada que parchear del lado del cliente. Alcanza con el estado de
+suscripción guardado en `Tenant` y el chequeo del lado del servidor. Las
+claves firmadas, el anti-tamper y demás solo se necesitan cuando el software
+se instala en una máquina que controla el cliente.
+
+### 3 bis.1 Configurar Mercado Pago (una sola vez)
+
+Las credenciales son **tuyas**, no de cada comercio: hay una única cuenta de
+Mercado Pago cobrando todas las suscripciones.
+
+1. Mercado Pago → **Tus integraciones** → crear una aplicación.
+2. **Credenciales** → copiar el *Access Token* a `MP_ACCESS_TOKEN` en `.env`.
+   Usar las de **prueba** hasta validar el circuito completo.
+3. **Webhooks** → configurar la URL:
+   `https://<API_PUBLIC_URL>/webhooks/mercadopago`
+   y habilitar los temas `subscription_preapproval`,
+   `subscription_authorized_payment` y `payments`.
+4. Al guardar, Mercado Pago genera una **clave secreta** → copiarla a
+   `MP_WEBHOOK_SECRET`.
+
+> Sin `MP_WEBHOOK_SECRET` la API responde `503` a todos los webhooks **a
+> propósito**: sin secreto no hay forma de distinguir una notificación real de
+> una falsificada, y procesarla a ciegas dejaría que cualquiera se regale
+> meses de servicio.
+
+### 3 bis.2 Crear tu usuario de staff (SUPERADMIN)
+
+No hay endpoint para esto a propósito (`ASSIGNABLE_ROLES` en
+`apps/api/src/users/dto/create-user.dto.ts` excluye `SUPERADMIN`, para que
+nadie pueda escalar privilegios desde la API). Se crea una única vez contra la
+base:
+
+```bash
+# 1) generar el hash de la contraseña
+docker compose -f docker-compose.prod.yml exec -T api \
+  node -e "const b=require('/repo/apps/api/node_modules/bcrypt'); b.hash('TU_PASSWORD',12).then(h=>console.log(h))"
+
+# 2) insertarlo (tenantId NULL = staff del SaaS, no pertenece a ningún comercio)
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U pos -d pos_saas -c "
+SELECT set_config('app.bypass_tenant_rls','true',false);
+INSERT INTO \"User\" (id,\"tenantId\",email,\"passwordHash\",\"fullName\",role,\"isActive\",\"createdAt\",\"updatedAt\")
+VALUES (gen_random_uuid()::text, NULL, 'staff@tudominio.com', '<HASH>', 'Staff', 'SUPERADMIN', true, now(), now());"
+```
+
+El `set_config` es necesario porque `User` tiene RLS forzada; ese escape hatch
+es el mismo que usa el login (ver `withAuthLookupContext`).
+
+Con eso ya entrás a **/platform**, el panel donde ves todos los comercios, su
+estado de pago y podés asignar precio, extender el vencimiento o cambiar la
+política.
+
+### 3 bis.3 Ciclo de vida de un comercio
+
+1. **Alta** → arranca en `TRIAL` por `BILLING_TRIAL_DAYS` días (default 30).
+   El contador aparece en el banner desde el primer día.
+2. **Asignarle precio** desde `/platform` → sin `monthlyAmount` el comercio no
+   puede suscribirse (el botón devuelve un error explicando eso).
+3. **El comercio adhiere** en *Configuración → Suscripción* → lo redirige a
+   Mercado Pago a cargar la tarjeta. **Los datos de tarjeta nunca pasan por
+   este sistema**, así que no hay obligaciones de PCI de tu lado.
+4. **Cada mes** Mercado Pago debita y avisa por webhook → el sistema acredita
+   el pago y empuja `currentPeriodEnd` un mes, solo.
+5. **Si no paga** → según `enforcementPolicy` del comercio.
+
+### 3 bis.4 Qué pasa al vencer (`enforcementPolicy`)
+
+Se configura **por comercio** desde `/platform`:
+
+| Política | Efecto |
+|---|---|
+| `WARN_ONLY` (default) | Solo banner de aviso. **Nunca** traba una venta. |
+| `READ_ONLY` | Deja entrar, consultar y exportar; rechaza escrituras. |
+| `BLOCK` | No deja usar el sistema. |
+
+El default es `WARN_ONLY`: nunca dejar a un comercio sin poder vender en el
+mostrador. El costo es que el cobro depende de la buena fe — si un cliente
+abusa, se le cambia la política desde el panel, sin tocar código ni redeployar.
+
+`/auth`, `/health`, `/webhooks` y `/billing` nunca se bloquean, sin importar la
+política: si no, un comercio vencido no podría ni loguearse para pagar.
+
+### 3 bis.5 Verificación
+
+- **Firma**: mandar un webhook con `x-signature` alterado debe dar `401` y no
+  modificar nada.
+- **Idempotencia**: reenviar el mismo pago no debe extender el vencimiento dos
+  veces (lo garantiza el `@@unique` de `SubscriptionEvent.mpPaymentId`).
+- **Simulador**: Mercado Pago → Tus integraciones → Webhooks tiene un
+  simulador de notificaciones para probar sin cobrar de verdad.
+
+---
+
 ## 4. Mantenimiento y backups
 
 Los nombres de usuario/base usados abajo salen de `.env`

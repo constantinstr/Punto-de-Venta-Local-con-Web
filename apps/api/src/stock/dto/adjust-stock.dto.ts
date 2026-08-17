@@ -1,4 +1,10 @@
-import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 // Exactamente uno de productId/variantId debe venir seteado, y exactamente
 // uno de delta/absoluteQuantity (validado en StockService, no acá, porque
@@ -23,6 +29,14 @@ export class AdjustStockDto {
   @IsOptional()
   @IsNumber()
   absoluteQuantity?: number;
+
+  // Opcional y ortogonal a delta/absoluteQuantity: se puede mandar solo, sin
+  // tocar la cantidad (ver StockService.assertShape), para fijar el umbral
+  // de alerta de stock bajo sin hacer un movimiento de stock.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minAlertStock?: number;
 
   @IsString()
   @MinLength(1)

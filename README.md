@@ -17,10 +17,11 @@ tenants/AFIP/WooCommerce y backups).
 | Base de datos | PostgreSQL + Prisma, multi-tenant con **Row Level Security** forzada |
 | Colas | Redis + BullMQ — reintentos con backoff para AFIP y WooCommerce |
 | Facturación | AFIP WSAA + WSFE v1 (CAE) — Factura A/B/C, QR fiscal |
-| E-commerce | Sync bidireccional de stock con WooCommerce (REST API + webhooks HMAC) |
+| E-commerce | Sync bidireccional de stock con WooCommerce y Tienda Nube (REST API + webhooks HMAC) |
 
 Detalle de cada pieza: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md),
 [`docs/afip.md`](./docs/afip.md), [`docs/woocommerce-sync.md`](./docs/woocommerce-sync.md),
+[`docs/tiendanube-sync.md`](./docs/tiendanube-sync.md),
 [`docs/security-and-deployment.md`](./docs/security-and-deployment.md).
 
 ## Estructura

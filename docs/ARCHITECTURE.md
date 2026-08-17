@@ -8,6 +8,7 @@ Este documento es el índice. El detalle de cada módulo vive en:
 
 - [`docs/peripherals.md`](./peripherals.md) — lector de código de barras e impresión de tickets/A4.
 - [`docs/woocommerce-sync.md`](./woocommerce-sync.md) — colas BullMQ y webhooks bidireccionales.
+- [`docs/tiendanube-sync.md`](./tiendanube-sync.md) — OAuth 2, webhooks firmados y alta de avisos por API.
 - [`docs/afip.md`](./afip.md) — WSAA (autenticación) y WSFE v1 (CAE) para Argentina.
 - [`docs/ROADMAP.md`](./ROADMAP.md) — plan de sprints.
 - [`packages/database/prisma/schema.prisma`](../packages/database/prisma/schema.prisma) — schema completo de base de datos.

@@ -1,7 +1,17 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { UserRole } from '@pos/database';
 import { FiscalConfigService } from './fiscal-config.service';
 import { CreateFiscalConfigDto } from './dto/create-fiscal-config.dto';
+import { UpdateFiscalConfigDto } from './dto/update-fiscal-config.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -26,5 +36,15 @@ export class FiscalConfigController {
     @Query('storeId') storeId: string,
   ) {
     return this.fiscalConfigService.findByStore(requireTenant(user), storeId);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateFiscalConfigDto,
+  ) {
+    return this.fiscalConfigService.update(requireTenant(user), id, dto);
   }
 }

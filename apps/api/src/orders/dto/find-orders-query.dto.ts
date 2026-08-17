@@ -1,5 +1,6 @@
 import {
   IsDateString,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -7,6 +8,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { OrderStatus } from '@pos/database';
 
 export class FindOrdersQueryDto {
   @IsOptional()
@@ -16,6 +18,25 @@ export class FindOrdersQueryDto {
   @IsOptional()
   @IsString()
   cashShiftId?: string;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  customerId?: string;
+
+  @IsOptional()
+  @IsEnum(OrderStatus)
+  status?: OrderStatus;
+
+  // Búsqueda por número de orden (exacto) — se resuelve como texto porque
+  // el input es un campo de búsqueda libre, no necesariamente un entero
+  // válido mientras el usuario tipea.
+  @IsOptional()
+  @IsString()
+  q?: string;
 
   @IsOptional()
   @IsDateString()

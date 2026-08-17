@@ -16,6 +16,28 @@ RUN apk add --no-cache openssl
 RUN corepack enable
 WORKDIR /repo
 
+# CA extra de confianza para el BUILD. Solo hace falta en máquinas de
+# desarrollo con un antivirus que intercepta HTTPS (AVG/Avast/Kaspersky "Web
+# Shield" y similares): re-firman el tráfico con una CA propia que la imagen
+# no conoce, y entonces `pnpm install` no puede validar el registry de npm y
+# falla con UNABLE_TO_VERIFY_LEAF_SIGNATURE.
+#
+# Se pasa el PEM en base64 por build-arg y no como archivo, porque certs/
+# está en .gitignore y un COPY de una carpeta inexistente rompería el build
+# en el servidor. Vacío en producción => no hace nada.
+ARG EXTRA_CA_CERT_B64=""
+# El archivo se crea siempre (vacío si no vino el arg) para que
+# NODE_EXTRA_CA_CERTS nunca apunte a una ruta inexistente, que haría a Node
+# emitir un warning en cada comando del build.
+RUN mkdir -p /usr/local/share/ca-certificates && \
+    if [ -n "$EXTRA_CA_CERT_B64" ]; then \
+      echo "$EXTRA_CA_CERT_B64" | base64 -d > /usr/local/share/ca-certificates/extra-ca.crt && \
+      echo "CA extra instalada para el build"; \
+    else \
+      : > /usr/local/share/ca-certificates/extra-ca.crt; \
+    fi
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/extra-ca.crt
+
 # ── deps: instala TODO el workspace (dev incluido) para poder compilar ──
 FROM base AS deps
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./

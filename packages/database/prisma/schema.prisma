@@ -117,6 +117,8 @@ enum SyncEntityType {
 enum SyncDirection {
   OUTBOUND_TO_WOO
   INBOUND_FROM_WOO
+  OUTBOUND_TO_TIENDANUBE
+  INBOUND_FROM_TIENDANUBE
 }
 
 enum SyncStatus {
@@ -132,6 +134,26 @@ enum WooSyncStatus {
   IGNORED
 }
 
+// Espeja los estados de una suscripción (preapproval) de Mercado Pago, más
+// TRIAL que es propio nuestro (MP no conoce el período de prueba).
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+// Qué hacer cuando un tenant tiene la suscripción vencida. Es por tenant y
+// no una constante global a propósito: el default WARN_ONLY es la política
+// comercial elegida (nunca trabar a un comercio en el mostrador), pero deja
+// poder endurecerla puntualmente con un cliente que abusa, sin tocar código
+// ni redeployar. Ver SubscriptionGuard.
+enum EnforcementPolicy {
+  WARN_ONLY // solo banner de aviso, no bloquea nada
+  READ_ONLY // deja entrar, consultar y exportar; no deja cobrar ni facturar
+  BLOCK     // no deja usar el sistema
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // CORE / TENANCY
 // ──────────────────────────────────────────────────────────────────────────
@@ -144,6 +166,26 @@ model Tenant {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // ── Suscripción / licencia ──────────────────────────────────────────────
+  // subscriptionStatus refleja lo que dice Mercado Pago (la fuente
+  // autoritativa), NO el vencimiento: un tenant puede estar AUTHORIZED en MP
+  // y aun así tener currentPeriodEnd en el pasado si el último débito falló.
+  // El estado *efectivo* se deriva al leer con subscription-status.util.ts —
+  // no hay ningún cron que "marque vencidos", justamente para que no pueda
+  // fallar en silencio y dejar clientes cobrados de más o de menos.
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  trialEndsAt        DateTime?
+  currentPeriodEnd   DateTime? // hasta cuándo está paga la suscripción
+  mpPreapprovalId    String?            @unique
+  enforcementPolicy  EnforcementPolicy  @default(WARN_ONLY)
+  monthlyAmount      Decimal?           @db.Decimal(12, 2)
+  // Copia del email del OWNER al dar de alta. Existe para que el panel de
+  // plataforma pueda mostrar a quién reclamarle sin necesidad de leer "User"
+  // cross-tenant — esa tabla guarda passwordHash y su RLS NO se amplía.
+  contactEmail       String?
+
+  subscriptionEvents SubscriptionEvent[]
 
   users              User[]
   stores             Store[]
@@ -162,6 +204,12 @@ model Tenant {
   customers          Customer[]
   syncLogs           SyncLog[]
   wooCommerceConfigs WooCommerceConfig[]
+  tiendanubeConfigs  TiendanubeConfig[]
+  auditLogs          AuditLog[]
+  customerAccountMovements CustomerAccountMovement[]
+  suppliers          Supplier[]
+  purchases          Purchase[]
+  purchaseItems      PurchaseItem[]
 }
 
 model User {
@@ -177,6 +225,8 @@ model User {
   cashShifts    CashShift[]
   cashMovements CashMovement[]
   orders        Order[]
+  customerAccountMovements CustomerAccountMovement[]
+  purchases     Purchase[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   refreshTokens RefreshToken[]
@@ -192,12 +242,15 @@ model Store {
   address           String?
   fiscalConfig      FiscalConfig?
   wooCommerceConfig WooCommerceConfig?
+  tiendanubeConfig  TiendanubeConfig?
   cashRegisters     CashRegister[]
   cashShifts        CashShift[]
   stockLevels       StockLevel[]
   orders            Order[]
   invoices          Invoice[]
   users             User[]             @relation("UserStores")
+  customerAccountMovements CustomerAccountMovement[]
+  purchases         Purchase[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -246,6 +299,7 @@ model CashShift {
   closedAt       DateTime?
   movements      CashMovement[]
   orders         Order[]
+  customerAccountMovements CustomerAccountMovement[]
 
   @@index([tenantId])
   @@index([cashRegisterId])
@@ -312,6 +366,11 @@ model Product {
   wooProductId  Int?
   wooSyncStatus WooSyncStatus @default(IGNORED)
   wooLastSyncAt DateTime?
+  // Tienda Nube necesita LOS DOS ids: del lado de ellos incluso un producto
+  // simple tiene una variante, y la ruta de stock cuelga de ambos
+  // (/products/:tnProductId/variants/:tnVariantId).
+  tnProductId   Int?
+  tnVariantId   Int?
 
   variants                       ProductVariant[]
   stockLevels                    StockLevel[]
@@ -319,6 +378,7 @@ model Product {
   orderItemBundleComponentUsages OrderItemBundleComponent[]
   bundleComponents               BundleItem[]               @relation("BundleComponent")
   bundleItems                    BundleItem[]               @relation("BundleParent")
+  purchaseItems                  PurchaseItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -344,11 +404,14 @@ model ProductVariant {
   wooVariantId  Int?
   wooSyncStatus WooSyncStatus @default(IGNORED)
   wooLastSyncAt DateTime?
+  tnProductId   Int?
+  tnVariantId   Int?
 
   stockLevels                    StockLevel[]
   orderItems                     OrderItem[]
   orderItemBundleComponentUsages OrderItemBundleComponent[]
   bundleComponentUsages          BundleItem[]
+  purchaseItems                  PurchaseItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, barcode])
@@ -412,11 +475,59 @@ model Customer {
   email          String?
   phone          String?
   accountBalance Decimal              @default(0) @db.Decimal(12, 2) // cuenta corriente
+  creditLimit    Decimal?             @db.Decimal(12, 2) // null = sin límite
   orders         Order[]
   invoices       Invoice[]
+  accountMovements CustomerAccountMovement[]
   createdAt      DateTime             @default(now())
 
   @@index([tenantId])
+}
+
+enum AccountMovementType {
+  CHARGE // venta a cuenta corriente
+  PAYMENT // el cliente paga (parte de) su deuda
+  ADJUSTMENT // corrección manual (OWNER/ADMIN)
+  CHARGE_REVERSAL // se anula la venta que generó el cargo
+}
+
+// Ledger de cuenta corriente — accountBalance en Customer es un
+// denormalizado calculado a partir de esto (siempre en la misma
+// transacción que la fila, nunca por separado, ver CustomersService). amount
+// es el delta CON SIGNO aplicado al saldo (positivo = aumenta la deuda,
+// negativo = la reduce) — CHARGE siempre positivo, PAYMENT/CHARGE_REVERSAL
+// siempre negativos, ADJUSTMENT puede ir en cualquier sentido (por eso no
+// se puede inferir el signo solo de `type`, a diferencia de los otros tres).
+model CustomerAccountMovement {
+  id            String               @id @default(cuid())
+  tenantId      String
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  customerId    String
+  customer      Customer             @relation(fields: [customerId], references: [id])
+  storeId       String?
+  store         Store?               @relation(fields: [storeId], references: [id])
+  type          AccountMovementType
+  amount        Decimal              @db.Decimal(12, 2)
+  balanceAfter  Decimal              @db.Decimal(12, 2)
+  orderId       String?
+  order         Order?               @relation(fields: [orderId], references: [id])
+  cashShiftId   String?
+  cashShift     CashShift?           @relation(fields: [cashShiftId], references: [id])
+  paymentMethod PaymentMethod?
+  reference     String?
+  notes         String?
+  userId        String
+  user          User                 @relation(fields: [userId], references: [id])
+  // Evita cobrar dos veces por un doble clic/reintento de red — ver
+  // CustomersService.registerPayment.
+  idempotencyKey String?
+  createdAt     DateTime             @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  // Un solo cargo y una sola reversa por orden — no dos CHARGE para la
+  // misma venta ni dos CHARGE_REVERSAL si se reintenta la anulación.
+  @@unique([orderId, type])
+  @@index([tenantId, customerId, createdAt])
 }
 
 // orderNumber es secuencial por (tenantId, storeId) — se calcula dentro de
@@ -449,7 +560,11 @@ model Order {
 
   items    OrderItem[]
   payments Payment[]
-  invoice  Invoice?
+  // Plural: una orden anulada tras facturarse tiene la factura original y su
+  // nota de crédito. Para el caso corriente (obtener "la factura") usar el
+  // helper de InvoicesService, que filtra los tipos NOTA_CREDITO_*.
+  invoices Invoice[]
+  accountMovements CustomerAccountMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -539,10 +654,20 @@ model Invoice {
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   storeId      String
   store        Store         @relation(fields: [storeId], references: [id])
-  orderId      String        @unique
+  // NO es @unique: una orden anulada después de facturarse tiene DOS
+  // comprobantes — la factura original y su nota de crédito. La unicidad
+  // real que importa es @@unique([storeId, invoiceType, cbteNro]), que sigue
+  // garantizando que no se repita un número dentro de cada tipo.
+  orderId      String
   order        Order         @relation(fields: [orderId], references: [id])
   customerId   String?
   customer     Customer?     @relation(fields: [customerId], references: [id])
+  // Solo en notas de crédito: apunta a la factura que anulan. Es lo que
+  // alimenta el nodo <CbtesAsoc> que exige WSFE, y lo que permite auditar
+  // qué comprobante canceló a cuál.
+  relatedInvoiceId String?    @unique
+  relatedInvoice   Invoice?   @relation("CreditNoteOf", fields: [relatedInvoiceId], references: [id])
+  creditNote       Invoice?   @relation("CreditNoteOf")
   invoiceType  InvoiceType
   ptoVta       Int
   cbteNro      Int?
@@ -562,6 +687,7 @@ model Invoice {
   @@index([tenantId])
   @@index([storeId])
   @@index([status])
+  @@index([orderId])
 }
 
 // El Ticket de Acceso (WSAA) NO se persiste acá — vive en Redis con TTL
@@ -672,4 +798,166 @@ model RefreshToken {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// Auditoría de mutaciones sensibles (ajuste de stock, anulación de venta,
+// alta de usuario, y lo que sigan agregando las próximas fases: cobro de
+// cuenta corriente, precios en lote, compras). `action` es un string libre
+// (con una unión de constantes del lado de TS en @pos/shared-types), no un
+// enum de Postgres — así una acción nueva no exige una migración.
+// userEmail queda "congelado" (no solo el FK a User) para que el historial
+// se pueda seguir leyendo aunque el usuario se borre o cambie de email.
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  storeId    String?
+  userId     String?
+  userEmail  String
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PROVEEDORES Y COMPRAS
+// ──────────────────────────────────────────────────────────────────────────
+
+model Supplier {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  name      String
+  taxId     String?
+  email     String?
+  phone     String?
+  address   String?
+  isActive  Boolean    @default(true)
+  purchases Purchase[]
+  createdAt DateTime   @default(now())
+
+  @@index([tenantId])
+}
+
+// purchaseNumber es secuencial por (tenantId, storeId) — mismo truco MAX+1
+// dentro de la transacción + reintento ante P2002 que Order.orderNumber
+// (ver PurchasesService.create). No es un comprobante fiscal — invoiceNumber
+// es el número de factura/remito del proveedor, texto libre sin validar.
+//
+// Costo: "último costo" — cada línea actualiza Product.costPrice (o
+// ProductVariant.costPrice) al costo unitario de esta compra, en la misma
+// transacción. El costo promedio ponderado sería más correcto para margen
+// pero exige repartir stock entre locales y decidir qué pasa al anular una
+// compra — deliberadamente fuera de v1 (ver plan de mejoras, Fase 7).
+model Purchase {
+  id             String         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  storeId        String
+  store          Store          @relation(fields: [storeId], references: [id])
+  supplierId     String
+  supplier       Supplier       @relation(fields: [supplierId], references: [id])
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  purchaseNumber Int
+  invoiceNumber  String?
+  total          Decimal        @db.Decimal(12, 2)
+  notes          String?
+  items          PurchaseItem[]
+  createdAt      DateTime       @default(now())
+
+  @@unique([tenantId, storeId, purchaseNumber])
+  @@index([tenantId, storeId, createdAt])
+}
+
+model PurchaseItem {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  purchaseId  String
+  purchase    Purchase        @relation(fields: [purchaseId], references: [id])
+  productId   String
+  product     Product         @relation(fields: [productId], references: [id])
+  variantId   String?
+  variant     ProductVariant? @relation(fields: [variantId], references: [id])
+  productName String
+  sku         String
+  quantity    Decimal         @db.Decimal(12, 3)
+  unitCost    Decimal         @db.Decimal(12, 2)
+  subtotal    Decimal         @db.Decimal(12, 2)
+
+  @@index([tenantId, purchaseId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SUSCRIPCIÓN / FACTURACIÓN DEL SAAS
+// ──────────────────────────────────────────────────────────────────────────
+
+// Historial de facturación: la respuesta a "¿por qué este comercio está en
+// este estado?". Imprescindible ante un reclamo ("yo pagué"), porque guarda
+// el payload crudo que mandó Mercado Pago.
+//
+// mpPaymentId es @unique y ESA es la idempotencia del webhook: Mercado Pago
+// reintenta las notificaciones, y sin esta restricción el mismo pago
+// extendería currentPeriodEnd dos veces. El P2002 que tira el segundo
+// intento se atrapa y se ignora (ver SubscriptionService.applyPayment).
+model SubscriptionEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  type        String // 'mp.subscription_preapproval' | 'mp.payment' | 'manual.extend' | ...
+  status      String
+  amount      Decimal? @db.Decimal(12, 2)
+  mpPaymentId String?  @unique
+  periodEnd   DateTime? // a qué fecha quedó movido currentPeriodEnd
+  notes       String?
+  payload     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// TIENDA NUBE
+// ──────────────────────────────────────────────────────────────────────────
+
+// A diferencia de WooCommerce —donde el comerciante pega una clave y un
+// secreto— Tienda Nube usa OAuth 2: el comercio autoriza por redirección y
+// nosotros recibimos un token que NO vence (solo muere si desinstalan la
+// app). Por eso acá no hay consumerKey/consumerSecret: hay un accessToken.
+//
+// El accessToken se guarda CIFRADO con EncryptionService, igual que las
+// credenciales de AFIP: con él se puede operar la tienda del cliente
+// (cambiar precios, stock), así que un dump de la base no puede exponerlo.
+//
+// tnStoreId es el id de la tienda del lado de ellos, que viene junto al
+// token en el intercambio de OAuth. Sin ese id no se puede llamar a su API,
+// porque todas las rutas lo llevan en el path.
+model TiendanubeConfig {
+  id                String    @id @default(cuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  storeId           String    @unique
+  store             Store     @relation(fields: [storeId], references: [id])
+  tnStoreId         String
+  accessToken       String    @db.Text
+  scopes            String?
+  syncStockOutbound Boolean   @default(true)
+  syncStockInbound  Boolean   @default(true)
+  // Igual que en WooCommerce: el precio solo va del POS hacia la tienda. No
+  // tiene sentido un "inbound" simétrico — el precio de venta lo define el
+  // punto de venta, no el canal online.
+  syncPriceOutbound Boolean   @default(true)
+  isActive          Boolean   @default(true)
+  lastSyncAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }

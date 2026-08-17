@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -9,17 +10,28 @@ import {
   Prisma,
   ProductType,
   OrderStatus,
+  InvoiceStatus,
   UserRole,
   type VatCondition,
   type TransactionClient,
 } from '@pos/database';
-import type { AuthUser } from '../common/types/auth-user';
-import type { CreateOrderDto } from './dto/create-order.dto';
-import type { FindOrdersQueryDto } from './dto/find-orders-query.dto';
+import { InvoicesService } from '../invoices/invoices.service';
 import {
-  WooStockSyncService,
-  type StockSyncEntry,
-} from '../woocommerce/woo-stock-sync.service';
+  creditNoteTypeFor,
+  CREDIT_NOTE_TYPES,
+} from '../afip/invoice-type.util';
+import type { AuthUser } from '../common/types/auth-user';
+import { AuditService } from '../audit/audit.service';
+import { applyAccountMovement } from '../customers/customer-account';
+import {
+  incrementStock,
+  decrementStockGuarded,
+} from '../stock/stock-mutations';
+import type { CreateOrderDto } from './dto/create-order.dto';
+import type { CancelOrderDto } from './dto/cancel-order.dto';
+import type { FindOrdersQueryDto } from './dto/find-orders-query.dto';
+import type { StockSyncEntry } from '../woocommerce/woo-stock-sync.service';
+import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
 
 const VAT_RATE_MAP: Record<VatCondition, number> = {
   IVA_21: 21,
@@ -36,6 +48,12 @@ const ORDER_INCLUDE = {
   items: { include: { bundleComponents: true } },
   payments: true,
   user: { select: { id: true, fullName: true } },
+  customer: { select: { id: true, name: true } },
+  // Plural desde que existen las notas de crédito: una orden anulada trae
+  // la factura original y su NC. El front toma la primera no-NC para
+  // mostrar "el comprobante" (ver shared-types Order.invoices).
+  invoices: true,
+  cashShift: { select: { id: true, status: true } },
 } satisfies Prisma.OrderInclude;
 
 interface ResolvedOrderItem {
@@ -62,7 +80,13 @@ interface ResolvedOrderItem {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly wooStockSyncService: WooStockSyncService) {}
+  private readonly logger = new Logger(OrdersService.name);
+
+  constructor(
+    private readonly ecommerceSync: EcommerceSyncService,
+    private readonly auditService: AuditService,
+    private readonly invoicesService: InvoicesService,
+  ) {}
 
   // El número de orden se calcula con MAX+1 dentro de la transacción; el
   // @@unique([tenantId, storeId, orderNumber]) es la red de seguridad real
@@ -78,11 +102,11 @@ export class OrdersService {
           actor,
           dto,
         );
-        // Fuera de la transacción a propósito: encolar sync de WooCommerce
-        // nunca debe poder hacer fallar (ni demorar) una venta ya
-        // confirmada — ver WooStockSyncService.
+        // Fuera de la transacción a propósito: encolar el sync de las
+        // tiendas online nunca debe poder hacer fallar (ni demorar) una
+        // venta ya confirmada — ver EcommerceSyncService.
         if (wooSyncEntries.length > 0) {
-          await this.wooStockSyncService.enqueueStockSync(
+          await this.ecommerceSync.enqueueStockSync(
             tenantId,
             order.storeId,
             wooSyncEntries,
@@ -186,11 +210,13 @@ export class OrdersService {
           for (const bi of bundleItems) {
             const requiredQty = Number(bi.quantity) * itemDto.quantity;
             if (bi.componentProduct.trackStock) {
-              await this.decrementStock(
+              await decrementStockGuarded(
                 tx,
-                dto.storeId,
-                bi.componentProductId,
-                bi.componentVariantId,
+                {
+                  storeId: dto.storeId,
+                  productId: bi.componentProductId,
+                  variantId: bi.componentVariantId,
+                },
                 requiredQty,
                 bi.componentProduct.name,
               );
@@ -214,11 +240,13 @@ export class OrdersService {
             });
           }
         } else if (product.trackStock) {
-          await this.decrementStock(
+          await decrementStockGuarded(
             tx,
-            dto.storeId,
-            product.id,
-            itemDto.variantId ?? null,
+            {
+              storeId: dto.storeId,
+              productId: product.id,
+              variantId: itemDto.variantId ?? null,
+            },
             itemDto.quantity,
             product.name,
           );
@@ -259,17 +287,27 @@ export class OrdersService {
         );
       }
 
+      const currentAccountTotal = dto.payments
+        .filter((p) => p.method === 'CURRENT_ACCOUNT')
+        .reduce((sum, p) => sum + p.amount, 0);
+      if (currentAccountTotal > 0 && !dto.customerId) {
+        throw new BadRequestException(
+          'Una venta con pago a cuenta corriente requiere seleccionar un cliente',
+        );
+      }
+
       const orderNumber = await this.getNextOrderNumber(
         tx,
         tenantId,
         dto.storeId,
       );
 
-      return tx.order.create({
+      const createdOrder = await tx.order.create({
         data: {
           tenantId,
           storeId: dto.storeId,
           cashShiftId: dto.cashShiftId,
+          customerId: dto.customerId,
           userId: actor.userId,
           orderNumber,
           status: OrderStatus.COMPLETED,
@@ -308,6 +346,21 @@ export class OrdersService {
         },
         include: ORDER_INCLUDE,
       });
+
+      if (currentAccountTotal > 0) {
+        await applyAccountMovement(tx, {
+          tenantId,
+          customerId: dto.customerId!,
+          storeId: dto.storeId,
+          type: 'CHARGE',
+          delta: currentAccountTotal,
+          orderId: createdOrder.id,
+          cashShiftId: dto.cashShiftId,
+          userId: actor.userId,
+        });
+      }
+
+      return createdOrder;
     });
 
     return { order, wooSyncEntries };
@@ -322,11 +375,17 @@ export class OrdersService {
         tenantId,
         storeId: query.storeId,
         cashShiftId: query.cashShiftId,
+        userId: query.userId,
+        customerId: query.customerId,
+        status: query.status,
+        orderNumber: query.q ? Number(query.q) || -1 : undefined,
         createdAt:
           query.from || query.to
             ? {
                 gte: query.from ? new Date(query.from) : undefined,
-                lte: query.to ? new Date(query.to) : undefined,
+                lte: query.to
+                  ? new Date(`${query.to}T23:59:59.999`)
+                  : undefined,
               }
             : undefined,
       };
@@ -341,6 +400,16 @@ export class OrdersService {
           include: {
             payments: true,
             user: { select: { id: true, fullName: true } },
+            customer: { select: { id: true, name: true } },
+            invoices: {
+              select: {
+                id: true,
+                invoiceType: true,
+                cbteNro: true,
+                cae: true,
+                status: true,
+              },
+            },
           },
         }),
       ]);
@@ -360,7 +429,78 @@ export class OrdersService {
     });
   }
 
-  async cancel(tenantId: string, id: string) {
+  // La anulación va en TRES fases y no en una sola transacción, a propósito:
+  // emitir la nota de crédito implica una ida y vuelta a AFIP (WSAA + WSFE)
+  // que puede tardar segundos, y una transacción interactiva de Prisma se
+  // corta a los 5s por defecto. Es exactamente lo que rompió issueFiscal en
+  // su momento.
+  //
+  //   1. Transacción corta: cargar y validar.
+  //   2. SIN transacción: pedirle la nota de crédito a AFIP (si hace falta).
+  //   3. Transacción corta: reingresar stock, cancelar y auditar.
+  //
+  // Si AFIP rechaza la NC en la fase 2, la orden NO se cancela: quedaría una
+  // venta anulada en el sistema y viva ante AFIP.
+  async cancel(
+    tenantId: string,
+    actor: AuthUser,
+    id: string,
+    dto: CancelOrderDto,
+  ) {
+    const { fiscalInvoiceId } = await withTenantContext(
+      tenantId,
+      async (tx) => {
+        const order = await tx.order.findFirst({
+          where: { id, tenantId },
+          include: { cashShift: true },
+        });
+        if (!order) throw new NotFoundException('Orden no encontrada');
+        if (order.status === OrderStatus.CANCELLED) {
+          throw new BadRequestException('La orden ya está cancelada');
+        }
+
+        // Un turno cerrado ya dejó su arqueo (expectedCash/difference)
+        // congelado en columnas — computeCashSalesTotal excluye las
+        // canceladas, así que anular después del cierre haría que ese arqueo
+        // guardado deje de reconciliar con lo que se recalcularía hoy.
+        if (order.cashShiftId && order.cashShift?.status !== 'OPEN') {
+          throw new BadRequestException(
+            'Esta venta pertenece a un turno de caja ya cerrado — no se puede anular',
+          );
+        }
+
+        // Solo los comprobantes fiscales autorizados necesitan nota de
+        // crédito. Un Ticket X (interno) o un comprobante rechazado se
+        // anulan sin pasar por AFIP.
+        const fiscal = await tx.invoice.findFirst({
+          where: {
+            orderId: order.id,
+            tenantId,
+            status: InvoiceStatus.ISSUED,
+            invoiceType: { notIn: CREDIT_NOTE_TYPES },
+          },
+        });
+        const necesitaNotaCredito =
+          fiscal !== null && creditNoteTypeFor(fiscal.invoiceType) !== null;
+
+        return { fiscalInvoiceId: necesitaNotaCredito ? fiscal.id : null };
+      },
+    );
+
+    // Fase 2 — fuera de toda transacción. Si AFIP rechaza, issueCreditNote
+    // lanza y la orden queda intacta.
+    let creditNoteId: string | null = null;
+    if (fiscalInvoiceId) {
+      const creditNote = await this.invoicesService.issueCreditNote(
+        tenantId,
+        fiscalInvoiceId,
+      );
+      creditNoteId = creditNote.id;
+      this.logger.log(
+        `Nota de crédito ${creditNote.invoiceType} nº ${creditNote.cbteNro} (CAE ${creditNote.cae}) emitida para anular la orden ${id}`,
+      );
+    }
+
     return withTenantContext(tenantId, async (tx) => {
       const order = await tx.order.findFirst({
         where: { id, tenantId },
@@ -369,6 +509,8 @@ export class OrdersService {
         },
       });
       if (!order) throw new NotFoundException('Orden no encontrada');
+      // Se revalida: entre la fase 1 y esta pudo haberla cancelado otro
+      // request. La NC ya emitida no se pierde — queda asociada a la factura.
       if (order.status === OrderStatus.CANCELLED) {
         throw new BadRequestException('La orden ya está cancelada');
       }
@@ -380,33 +522,79 @@ export class OrdersService {
               where: { id: bc.componentProductId },
             });
             if (componentProduct?.trackStock) {
-              await this.incrementStock(
+              await incrementStock(
                 tx,
                 tenantId,
-                order.storeId,
-                bc.componentProductId,
-                bc.componentVariantId,
+                {
+                  storeId: order.storeId,
+                  productId: bc.componentProductId,
+                  variantId: bc.componentVariantId,
+                },
                 Number(bc.quantity),
               );
             }
           }
         } else if (item.product.trackStock) {
-          await this.incrementStock(
+          await incrementStock(
             tx,
             tenantId,
-            order.storeId,
-            item.productId,
-            item.variantId,
+            {
+              storeId: order.storeId,
+              productId: item.productId,
+              variantId: item.variantId,
+            },
             Number(item.quantity),
           );
         }
       }
 
-      return tx.order.update({
+      const cancelled = await tx.order.update({
         where: { id },
         data: { status: OrderStatus.CANCELLED },
         include: ORDER_INCLUDE,
       });
+
+      // Si la venta se cobró (total o parcialmente) a cuenta corriente,
+      // revertir la deuda — nunca borrar el CHARGE original, queda como
+      // historial. @@unique([orderId, type]) impide postear dos reversas.
+      const charge = await tx.customerAccountMovement.findFirst({
+        where: { tenantId, orderId: order.id, type: 'CHARGE' },
+      });
+      if (charge) {
+        await applyAccountMovement(tx, {
+          tenantId,
+          customerId: charge.customerId,
+          storeId: order.storeId,
+          type: 'CHARGE_REVERSAL',
+          delta: -Number(charge.amount),
+          orderId: order.id,
+          userId: actor.userId,
+        });
+      }
+
+      await this.auditService.record(tx, tenantId, {
+        storeId: order.storeId,
+        userId: actor.userId,
+        userEmail: actor.email,
+        action: 'order.cancel',
+        entityType: 'Order',
+        entityId: order.id,
+        metadata: {
+          orderNumber: order.orderNumber,
+          total: order.total.toString(),
+          reason: dto.reason,
+          // Queda registrado con qué comprobante fiscal se respaldó la
+          // anulación (null si la venta no estaba facturada).
+          creditNoteId,
+        },
+      });
+
+      // NO se crea ningún CashMovement de egreso por la devolución: el
+      // arqueo ya se ajusta solo, porque computeCashSalesTotal
+      // (cash-shifts.service.ts) excluye las órdenes CANCELLED al calcular
+      // expectedCash. Agregar además un movimiento descontaría el efectivo
+      // dos veces y dejaría la caja con un faltante fantasma.
+      return cancelled;
     });
   }
 
@@ -420,61 +608,5 @@ export class OrdersService {
       _max: { orderNumber: true },
     });
     return (result._max.orderNumber ?? 0) + 1;
-  }
-
-  // Decremento atómico con verificación de balance en la misma sentencia —
-  // mismo patrón documentado en docs/ARCHITECTURE.md §3: ninguna caja
-  // concurrente puede vender stock que no existe, sin locks pesimistas.
-  private async decrementStock(
-    tx: TransactionClient,
-    storeId: string,
-    productId: string,
-    variantId: string | null | undefined,
-    quantity: number,
-    label: string,
-  ) {
-    const affected = await tx.$executeRaw`
-      UPDATE "StockLevel"
-      SET quantity = quantity - ${quantity}, "updatedAt" = now()
-      WHERE "storeId" = ${storeId}
-        AND "productId" IS NOT DISTINCT FROM ${variantId ? null : productId}
-        AND "variantId" IS NOT DISTINCT FROM ${variantId ?? null}
-        AND quantity >= ${quantity}
-    `;
-    if (affected === 0) {
-      throw new BadRequestException(`Stock insuficiente para "${label}"`);
-    }
-  }
-
-  // Reingreso de stock al cancelar — sin condición de carrera relevante
-  // (sumar siempre es seguro), así que no necesita la misma atomicidad
-  // condicional que el descuento.
-  private async incrementStock(
-    tx: TransactionClient,
-    tenantId: string,
-    storeId: string,
-    productId: string,
-    variantId: string | null,
-    quantity: number,
-  ) {
-    const existing = await tx.stockLevel.findFirst({
-      where: { storeId, productId: variantId ? null : productId, variantId },
-    });
-    if (existing) {
-      await tx.stockLevel.update({
-        where: { id: existing.id },
-        data: { quantity: { increment: quantity } },
-      });
-    } else {
-      await tx.stockLevel.create({
-        data: {
-          tenantId,
-          storeId,
-          productId: variantId ? null : productId,
-          variantId,
-          quantity,
-        },
-      });
-    }
   }
 }

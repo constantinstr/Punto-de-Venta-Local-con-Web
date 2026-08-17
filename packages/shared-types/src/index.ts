@@ -21,6 +21,33 @@ export interface AuthUser {
   role: UserRole;
 }
 
+// OWNER y SUPERADMIN quedan afuera a propósito — nunca asignables por
+// /users (ver ASSIGNABLE_ROLES en la API).
+export type AssignableRole = "ADMIN" | "MANAGER" | "CASHIER";
+
+export interface StaffUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateUserInput {
+  email: string;
+  password: string;
+  fullName: string;
+  role: AssignableRole;
+}
+
+export interface UpdateUserInput {
+  fullName?: string;
+  role?: AssignableRole;
+  isActive?: boolean;
+  newPassword?: string;
+}
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
@@ -44,6 +71,11 @@ export interface Category {
   id: string;
   name: string;
   parentId: string | null;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+  parentId?: string;
 }
 
 export interface ProductVariant {
@@ -91,6 +123,7 @@ export interface Product {
 export interface StockEntryInput {
   storeId: string;
   quantity: number;
+  minAlertStock?: number;
 }
 
 export interface CreateVariantInput {
@@ -135,6 +168,50 @@ export interface UpdateProductInput {
   isActive?: boolean;
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// IMPORTACIÓN MASIVA Y PRECIOS EN LOTE
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ImportRowResult {
+  row: number;
+  action: "create" | "update" | "error";
+  sku: string | null;
+  name: string | null;
+  reason?: string;
+}
+
+export interface ImportSummary {
+  create: number;
+  update: number;
+  error: number;
+}
+
+export interface ImportPreviewResult {
+  results: ImportRowResult[];
+  summary: ImportSummary;
+}
+
+export type BulkPriceMode = "PERCENT" | "FIXED_DELTA";
+
+export interface BulkPriceUpdateInput {
+  categoryId?: string;
+  mode: BulkPriceMode;
+  value: number;
+}
+
+export interface BulkPriceSample {
+  id: string;
+  sku: string;
+  name: string;
+  oldPrice: number;
+  newPrice: number;
+}
+
+export interface BulkPricePreviewResult {
+  affectedCount: number;
+  sample: BulkPriceSample[];
+}
+
 export interface StockRow {
   productId: string | null;
   variantId: string | null;
@@ -167,6 +244,7 @@ export interface AdjustStockInput {
   variantId?: string;
   delta?: number;
   absoluteQuantity?: number;
+  minAlertStock?: number;
   reason: string;
 }
 
@@ -269,6 +347,7 @@ export interface CreatePaymentInput {
 export interface CreateOrderInput {
   storeId: string;
   cashShiftId?: string;
+  customerId?: string;
   items: CreateOrderItemInput[];
   payments: CreatePaymentInput[];
   notes?: string;
@@ -313,8 +392,11 @@ export interface Order {
   orderNumber: number;
   storeId: string;
   cashShiftId: string | null;
+  cashShift?: { id: string; status: string } | null;
   userId: string;
   user: { id: string; fullName: string };
+  customerId?: string | null;
+  customer?: { id: string; name: string } | null;
   status: OrderStatus;
   subtotal: string;
   discountAmount: string;
@@ -323,7 +405,48 @@ export interface Order {
   notes: string | null;
   items: OrderItem[];
   payments: OrderPayment[];
+  // Plural desde que existen las notas de crédito: una venta anulada que
+  // estaba facturada trae la factura original Y su NC. Para mostrar "el
+  // comprobante" usar los helpers de abajo, no invoices[0] — el orden no
+  // está garantizado.
+  invoices?: OrderInvoiceSummary[];
   createdAt: string;
+}
+
+export interface OrderInvoiceSummary {
+  id: string;
+  invoiceType: InvoiceType;
+  cbteNro: number | null;
+  cae: string | null;
+  status: InvoiceStatus;
+}
+
+export const CREDIT_NOTE_INVOICE_TYPES: InvoiceType[] = [
+  "NOTA_CREDITO_A",
+  "NOTA_CREDITO_B",
+  "NOTA_CREDITO_C",
+];
+
+/** El comprobante de venta de la orden (excluye notas de crédito). */
+export function findSaleInvoice(
+  order: Pick<Order, "invoices">,
+): OrderInvoiceSummary | null {
+  return (
+    order.invoices?.find(
+      (i) => !CREDIT_NOTE_INVOICE_TYPES.includes(i.invoiceType),
+    ) ?? null
+  );
+}
+
+/** La nota de crédito que anuló la venta, si la orden fue anulada. */
+export function findCreditNote(
+  order: Pick<Order, "invoices">,
+): OrderInvoiceSummary | null {
+  return (
+    order.invoices?.find((i) =>
+      CREDIT_NOTE_INVOICE_TYPES.includes(i.invoiceType),
+    ) ?? null
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -379,6 +502,8 @@ export interface Customer {
   address: string | null;
   email: string | null;
   phone: string | null;
+  accountBalance: string;
+  creditLimit: string | null;
 }
 
 export interface CreateCustomerInput {
@@ -390,6 +515,60 @@ export interface CreateCustomerInput {
   address?: string;
   email?: string;
   phone?: string;
+}
+
+export interface UpdateCustomerInput {
+  docType?: CustomerDocType;
+  docNumber?: string;
+  name?: string;
+  businessName?: string;
+  taxCondition?: CustomerTaxCondition;
+  address?: string;
+  email?: string;
+  phone?: string;
+  creditLimit?: number | null;
+}
+
+export type AccountMovementType = "CHARGE" | "PAYMENT" | "ADJUSTMENT" | "CHARGE_REVERSAL";
+
+export interface CustomerAccountMovement {
+  id: string;
+  customerId: string;
+  storeId: string | null;
+  type: AccountMovementType;
+  amount: string;
+  balanceAfter: string;
+  orderId: string | null;
+  cashShiftId: string | null;
+  paymentMethod: PaymentMethod | null;
+  reference: string | null;
+  notes: string | null;
+  userId: string;
+  createdAt: string;
+}
+
+export interface CustomerAccount {
+  customer: Customer;
+  movements: {
+    data: CustomerAccountMovement[];
+    total: number;
+    page: number;
+    limit: number;
+  };
+}
+
+export interface RegisterAccountPaymentInput {
+  amount: number;
+  method: PaymentMethod;
+  cashShiftId?: string;
+  reference?: string;
+  notes?: string;
+  idempotencyKey?: string;
+}
+
+export interface RegisterAccountAdjustmentInput {
+  delta: number;
+  reason: string;
 }
 
 export interface Invoice {
@@ -458,7 +637,11 @@ export interface UpdateWooConfigInput {
 }
 
 export type SyncEntityType = "PRODUCT" | "STOCK" | "ORDER";
-export type SyncDirection = "OUTBOUND_TO_WOO" | "INBOUND_FROM_WOO";
+export type SyncDirection =
+  | "OUTBOUND_TO_WOO"
+  | "INBOUND_FROM_WOO"
+  | "OUTBOUND_TO_TIENDANUBE"
+  | "INBOUND_FROM_TIENDANUBE";
 export type SyncStatus = "PENDING" | "SUCCESS" | "FAILED";
 
 export interface SyncLog {
@@ -483,6 +666,51 @@ export interface CatalogSyncSummary {
   created: number;
   skipped: number;
   errors: number;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SINCRONIZACIÓN TIENDA NUBE
+// ──────────────────────────────────────────────────────────────────────────
+
+// No hay CreateTiendanubeConfigInput: la configuración no se carga a mano,
+// nace del callback de OAuth. Desde la app solo se prenden y apagan opciones.
+export interface TiendanubeConfig {
+  id: string;
+  storeId: string;
+  /** Id de la tienda del lado de ellos. Se muestra como referencia. */
+  tnStoreId: string;
+  scopes: string | null;
+  syncStockOutbound: boolean;
+  syncStockInbound: boolean;
+  syncPriceOutbound: boolean;
+  isActive: boolean;
+  lastSyncAt: string | null;
+  createdAt: string;
+}
+
+export interface UpdateTiendanubeConfigInput {
+  syncStockOutbound?: boolean;
+  syncStockInbound?: boolean;
+  syncPriceOutbound?: boolean;
+  isActive?: boolean;
+}
+
+export interface TiendanubeAuthorizeUrl {
+  url: string;
+}
+
+// La vinculación de catálogo de Tienda Nube no crea productos (a diferencia
+// de la de WooCommerce), así que no comparte CatalogSyncSummary: acá solo hay
+// "se ató" o "no hay SKU equivalente".
+export interface TiendanubeCatalogSyncResult {
+  revisados: number;
+  vinculados: number;
+  sinCoincidencia: number;
+}
+
+export interface TiendanubeWebhookRegistration {
+  registered: string[];
+  error?: string;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -565,4 +793,210 @@ export interface CashShiftsHistoryReport {
   from: string;
   to: string;
   shifts: CashShiftHistoryEntry[];
+}
+
+// action es texto libre del lado del backend (ver apps/api/src/audit) —
+// esta unión es una guía para el front, no una validación exhaustiva: no
+// hace falta tocar el backend para agregar una acción nueva.
+export type AuditAction =
+  | "stock.adjust"
+  | "order.cancel"
+  | "user.create"
+  | "user.update"
+  | "customer.account.payment"
+  | "customer.account.adjustment"
+  | "category.create"
+  | "category.update"
+  | "category.delete"
+  | "product.bulk-import"
+  | "product.bulk-price-update"
+  | "purchase.create";
+
+export interface AuditLogEntry {
+  id: string;
+  storeId: string | null;
+  userId: string | null;
+  userEmail: string;
+  action: AuditAction | string;
+  entityType: string;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PaginatedAuditLog {
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PROVEEDORES Y COMPRAS (Fase 7)
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface Supplier {
+  id: string;
+  name: string;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateSupplierInput {
+  name: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface UpdateSupplierInput {
+  name?: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  isActive?: boolean;
+}
+
+export interface PurchaseItem {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  productName: string;
+  sku: string;
+  quantity: string;
+  unitCost: string;
+  subtotal: string;
+}
+
+export interface Purchase {
+  id: string;
+  storeId: string;
+  supplierId: string;
+  supplier: { id: string; name: string };
+  userId: string;
+  user: { id: string; fullName: string };
+  purchaseNumber: number;
+  invoiceNumber: string | null;
+  total: string;
+  notes: string | null;
+  items: PurchaseItem[];
+  createdAt: string;
+}
+
+export interface CreatePurchaseItemInput {
+  productId: string;
+  variantId?: string;
+  quantity: number;
+  unitCost: number;
+}
+
+export interface CreatePurchaseInput {
+  storeId: string;
+  supplierId: string;
+  invoiceNumber?: string;
+  notes?: string;
+  items: CreatePurchaseItemInput[];
+}
+
+export interface PaginatedPurchases {
+  data: Purchase[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SUSCRIPCIÓN DEL SAAS (licencia mensual)
+// ──────────────────────────────────────────────────────────────────────────
+
+export type SubscriptionStatus = "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED";
+
+export type EnforcementPolicy = "WARN_ONLY" | "READ_ONLY" | "BLOCK";
+
+/** Estado efectivo derivado de las fechas (ver subscription-status.util.ts en la API). */
+export type EffectiveSubscriptionState =
+  | "TRIAL"
+  | "ACTIVE"
+  | "GRACE"
+  | "EXPIRED"
+  | "CANCELLED";
+
+export interface SubscriptionSnapshot {
+  state: EffectiveSubscriptionState;
+  daysRemaining: number;
+  shouldWarn: boolean;
+  message: string | null;
+  blocksWrites: boolean;
+  blocksAccess: boolean;
+}
+
+export interface TenantSubscription {
+  tenantId: string;
+  tenantName: string;
+  contactEmail: string | null;
+  subscriptionStatus: SubscriptionStatus;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
+  monthlyAmount: number | null;
+  enforcementPolicy: EnforcementPolicy;
+  hasMercadoPagoSubscription: boolean;
+  snapshot: SubscriptionSnapshot;
+}
+
+export interface SubscriptionEvent {
+  id: string;
+  type: string;
+  status: string;
+  amount: string | null;
+  mpPaymentId: string | null;
+  periodEnd: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface SubscribeResponse {
+  initPoint: string | null;
+  preapprovalId: string;
+}
+
+export interface UpdateTenantSubscriptionInput {
+  monthlyAmount?: number;
+  enforcementPolicy?: EnforcementPolicy;
+  currentPeriodEnd?: string;
+  subscriptionStatus?: SubscriptionStatus;
+  notes?: string;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// CONFIGURACIÓN: LOCALES Y FACTURACIÓN
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface CreateStoreInput {
+  name: string;
+  address?: string;
+}
+
+/** Un local no se borra ni se mueve de comercio: de él cuelgan ventas y
+ *  comprobantes fiscales ya emitidos. Solo se corrigen nombre y dirección. */
+export interface UpdateStoreInput {
+  name?: string;
+  address?: string;
+}
+
+export interface UpdateFiscalConfigInput {
+  cuit?: string;
+  taxCondition?: FiscalTaxCondition;
+  grossIncomeNumber?: string;
+  activityStartDate?: string;
+  ptoVta?: number;
+  /** Se mandan siempre juntos: un certificado nuevo con la clave vieja no firma. */
+  crtCertificate?: string;
+  keyCertificate?: string;
+  isProduction?: boolean;
 }

@@ -1,22 +1,20 @@
-import { useEffect, useState } from "react";
+"use client";
 
-// El dark mode de esta app sigue el SO (@media prefers-color-scheme, ver
-// globals.css) — no hay toggle manual. Los gráficos (Recharts) pintan SVG
-// con colores literales via props, así que no pueden resolverse solo con
-// clases Tailwind: este hook les da el mismo booleano que ya gobierna el
-// resto de la UI. El estado inicial se lee en el initializer (no en un
-// efecto) para no disparar un render en cascada solo por el valor de arranque.
+import { useSyncExternalStore } from "react";
+import { resolveIsDark, subscribeToTheme } from "@/lib/theme";
+
+// Los gráficos (Recharts) pintan SVG con colores literales por props, así que
+// no pueden resolverse con clases de Tailwind: este hook les da el mismo
+// booleano que gobierna el resto de la UI.
+//
+// Lee el tema EFECTIVO, no `prefers-color-scheme` a secas: desde que hay
+// selector manual, el SO ya no es la única fuente. Sin esto, un usuario con
+// Windows en oscuro que elige "Claro" vería toda la app clara pero los
+// gráficos con la paleta oscura.
 export function useIsDarkMode(): boolean {
-  const [isDark, setIsDark] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches,
+  return useSyncExternalStore(
+    subscribeToTheme,
+    resolveIsDark,
+    () => false, // en el servidor se asume claro, que es el default
   );
-
-  useEffect(() => {
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-
-  return isDark;
 }

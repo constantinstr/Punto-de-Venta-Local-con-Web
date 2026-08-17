@@ -19,10 +19,23 @@ export interface FeCaeAlicuota {
   importe: number;
 }
 
+// Comprobante asociado (<CbtesAsoc>). Obligatorio en notas de crédito:
+// identifica la factura que se está anulando.
+export interface CbteAsociado {
+  tipo: number; // AFIP_CBTE_TIPO del comprobante original
+  ptoVta: number;
+  nro: number;
+  cuit: string; // CUIT del EMISOR del comprobante original
+}
+
 export interface FeCaeRequest {
   cbteTipo: number; // AFIP_CBTE_TIPO
   docTipo: number; // AFIP_DOC_TIPO
   docNro: number;
+  // Obligatorio desde la RG 5616 — ver AFIP_CONDICION_IVA_RECEPTOR.
+  condicionIvaReceptorId: number;
+  // Solo en notas de crédito.
+  cbtesAsoc?: CbteAsociado[];
   cbteNro: number;
   importeTotal: number;
   importeNeto: number;

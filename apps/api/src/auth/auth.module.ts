@@ -5,10 +5,13 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
     PassportModule,
+    // Para setear el período de prueba al dar de alta un tenant.
+    BillingModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

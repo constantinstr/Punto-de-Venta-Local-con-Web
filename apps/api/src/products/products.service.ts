@@ -11,7 +11,7 @@ import {
   type TransactionClient,
 } from '@pos/database';
 import { getAvailableStock } from '../stock/stock-calculation';
-import { WooPriceSyncService } from '../woocommerce/woo-price-sync.service';
+import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import type { CreateVariantDto } from './dto/create-variant.dto';
@@ -28,7 +28,7 @@ const PRODUCT_INCLUDE = {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly wooPriceSyncService: WooPriceSyncService) {}
+  constructor(private readonly ecommerceSync: EcommerceSyncService) {}
 
   async create(tenantId: string, dto: CreateProductDto) {
     this.assertTypeShape(dto);
@@ -81,6 +81,7 @@ export class ProductsService {
               storeId: entry.storeId,
               productId: product.id,
               quantity: entry.quantity,
+              minAlertStock: entry.minAlertStock,
             },
           });
         }
@@ -161,11 +162,11 @@ export class ProductsService {
       );
     });
 
-    // Fuera de la transacción a propósito, mismo criterio que
-    // WooStockSyncService: encolar sync de WooCommerce nunca debe poder
-    // hacer fallar (ni demorar) una edición de catálogo ya guardada.
+    // Fuera de la transacción a propósito, mismo criterio que en las ventas:
+    // encolar el sync de las tiendas online nunca debe poder hacer fallar
+    // (ni demorar) una edición de catálogo ya guardada.
     if (dto.price !== undefined) {
-      await this.wooPriceSyncService.enqueuePriceSync(
+      await this.ecommerceSync.enqueuePriceSync(
         tenantId,
         id,
         Number(product.price),
@@ -384,6 +385,7 @@ export class ProductsService {
             storeId: entry.storeId,
             variantId: variant.id,
             quantity: entry.quantity,
+            minAlertStock: entry.minAlertStock,
           },
         });
       }

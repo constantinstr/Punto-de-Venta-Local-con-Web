@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Order, PaymentMethod, RequestedInvoiceType, Invoice, Store } from "@pos/shared-types";
+import type { Order, PaymentMethod, RequestedInvoiceType, Invoice, Store, Customer } from "@pos/shared-types";
 import type { CartTotals } from "@/stores/cart-calculations";
 import type { OrderItemPayload } from "@/stores/cart-calculations";
 import { sumPayments, remainingToPay, computeChange, validatePayments, type PaymentLine } from "@/stores/payment-calculations";
 import { useCreateOrder } from "@/hooks/useOrders";
 import { useFiscalConfig } from "@/hooks/useFiscalConfig";
-import { useCreateCustomer } from "@/hooks/useCustomers";
 import { useIssueInvoice } from "@/hooks/useInvoices";
 import { ApiError } from "@/lib/api";
 import { ThermalReceipt, type ReceiptPaperSize } from "./ThermalReceipt";
+import { CustomerPicker } from "./CustomerPicker";
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Efectivo",
@@ -26,8 +26,6 @@ const FISCAL_OPTION_LABELS: Record<RequestedInvoiceType, string> = {
   FACTURA_B: "Factura B",
   FACTURA_A: "Factura A",
 };
-
-const CUIT_PATTERN = /^\d{11}$/;
 
 export function CheckoutModal({
   totals,
@@ -49,14 +47,12 @@ export function CheckoutModal({
   onClose: () => void;
 }) {
   const createOrder = useCreateOrder();
-  const createCustomer = useCreateCustomer();
   const issueInvoice = useIssueInvoice();
   const { data: fiscalConfig } = useFiscalConfig(storeId);
 
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: "CASH", amount: totals.total }]);
   const [fiscalType, setFiscalType] = useState<RequestedInvoiceType>("TICKET_X");
-  const [cuit, setCuit] = useState("");
-  const [businessName, setBusinessName] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
@@ -65,6 +61,9 @@ export function CheckoutModal({
   const [resolvedCustomerId, setResolvedCustomerId] = useState<string | undefined>();
   const [paperSize, setPaperSize] = useState<ReceiptPaperSize>("80mm");
   const confirmRef = useRef<HTMLButtonElement>(null);
+
+  const hasCurrentAccountPayment = payments.some((p) => p.method === "CURRENT_ACCOUNT");
+  const needsCustomer = fiscalType === "FACTURA_A" || hasCurrentAccountPayment;
 
   useEffect(() => {
     confirmRef.current?.focus();
@@ -133,32 +132,27 @@ export function CheckoutModal({
       setError("Sin conexión al servidor — no se puede registrar el cobro. Esperá a reconectar e intentá de nuevo.");
       return;
     }
-    if (fiscalType === "FACTURA_A" && !CUIT_PATTERN.test(cuit)) {
-      setError("Ingresá un CUIT válido (11 dígitos, sin guiones)");
+    if (needsCustomer && !selectedCustomer) {
+      setError(
+        fiscalType === "FACTURA_A"
+          ? "Seleccioná o creá un cliente con CUIT para Factura A"
+          : "Seleccioná un cliente para cobrar a cuenta corriente",
+      );
       return;
     }
-    if (fiscalType === "FACTURA_A" && !businessName.trim()) {
-      setError("Ingresá la razón social del cliente");
+    if (fiscalType === "FACTURA_A" && selectedCustomer && selectedCustomer.docType !== "CUIT") {
+      setError("El cliente seleccionado no tiene CUIT — no se puede emitir Factura A");
       return;
     }
 
     try {
-      let customerId: string | undefined;
-      if (fiscalType === "FACTURA_A") {
-        const customer = await createCustomer.mutateAsync({
-          docType: "CUIT",
-          docNumber: cuit,
-          name: businessName,
-          businessName,
-          taxCondition: "RESPONSABLE_INSCRIPTO",
-        });
-        customerId = customer.id;
-        setResolvedCustomerId(customerId);
-      }
+      const customerId = selectedCustomer?.id;
+      setResolvedCustomerId(customerId);
 
       const order = await createOrder.mutateAsync({
         storeId,
         cashShiftId,
+        customerId,
         items: orderItemsPayload,
         payments: payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })),
       });
@@ -376,24 +370,25 @@ export function CheckoutModal({
               Este local no tiene configuración fiscal cargada — solo se puede emitir Ticket.
             </p>
           )}
-          {fiscalType === "FACTURA_A" && (
-            <div className="flex gap-2 pt-1">
-              <input
-                placeholder="CUIT (11 dígitos)"
-                value={cuit}
-                onChange={(e) => setCuit(e.target.value.replace(/\D/g, ""))}
-                maxLength={11}
-                className="w-32 rounded border border-border px-2 py-1.5 text-sm   bg-surface"
-              />
-              <input
-                placeholder="Razón social"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                className="flex-1 rounded border border-border px-2 py-1.5 text-sm   bg-surface"
-              />
-            </div>
-          )}
         </div>
+
+        {needsCustomer && (
+          <div className="space-y-1">
+            <p className="text-sm text-muted">
+              {fiscalType === "FACTURA_A" ? "Cliente (requiere CUIT)" : "Cliente"}
+            </p>
+            <CustomerPicker
+              selected={selectedCustomer}
+              onSelect={setSelectedCustomer}
+              docLabel={fiscalType === "FACTURA_A" ? "CUIT (11 dígitos)" : "CUIT/DNI (opcional)"}
+              createDefaults={
+                fiscalType === "FACTURA_A"
+                  ? { docType: "CUIT", taxCondition: "RESPONSABLE_INSCRIPTO" }
+                  : undefined
+              }
+            />
+          </div>
+        )}
 
         {!validation.valid && validation.reason === "OVERPAID_WITHOUT_CASH" && (
           <p className="text-sm text-red-600">
@@ -415,7 +410,7 @@ export function CheckoutModal({
             ref={confirmRef}
             type="button"
             onClick={handleConfirm}
-            disabled={!validation.valid || createOrder.isPending || !isOnline}
+            disabled={!validation.valid || createOrder.isPending || !isOnline || (needsCustomer && !selectedCustomer)}
             className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {createOrder.isPending ? "Registrando…" : !isOnline ? "Sin conexión" : "Confirmar cobro"}

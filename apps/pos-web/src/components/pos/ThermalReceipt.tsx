@@ -36,6 +36,10 @@ function money(n: number | string): string {
 // oculto en pantalla (`hidden print:block`) — el truco clásico de impresión
 // selectiva vía CSS (ver `#thermal-receipt` en globals.css) esconde todo lo
 // demás de la página al imprimir y solo deja visible este nodo.
+// invoice puede ser null: una orden cuya emisión AFIP falló del todo (sin
+// fallback a Ticket X) no tiene ninguna fila de Invoice — antes de esto el
+// componente exigía una, así que ese caso nunca se podía reimprimir. Ver
+// Fase 3 del plan de mejoras.
 export function ThermalReceipt({
   order,
   invoice,
@@ -44,7 +48,7 @@ export function ThermalReceipt({
   paperSize,
 }: {
   order: Order;
-  invoice: Invoice;
+  invoice: Invoice | null;
   store: Store;
   fiscalConfig: FiscalConfig | null;
   paperSize: ReceiptPaperSize;
@@ -52,7 +56,7 @@ export function ThermalReceipt({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!invoice.afipQrUrl) {
+    if (!invoice?.afipQrUrl) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setQrDataUrl(null);
       return;
@@ -66,9 +70,9 @@ export function ThermalReceipt({
     return () => {
       cancelled = true;
     };
-  }, [invoice.afipQrUrl]);
+  }, [invoice?.afipQrUrl]);
 
-  const isFiscal = invoice.invoiceType !== "TICKET_X";
+  const isFiscal = invoice ? invoice.invoiceType !== "TICKET_X" : false;
   const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const change = Math.max(0, Math.round((paid - Number(order.total)) * 100) / 100);
 
@@ -94,22 +98,32 @@ export function ThermalReceipt({
       </div>
 
       <div className="border-t border-b border-dashed border-black py-1 text-center">
-        <p className="font-bold">{INVOICE_TYPE_LABEL[invoice.invoiceType] ?? invoice.invoiceType}</p>
-        {isFiscal ? (
-          <p>
-            Pto. Vta {String(invoice.ptoVta).padStart(4, "0")} — Comp. Nro{" "}
-            {String(invoice.cbteNro ?? 0).padStart(8, "0")}
-          </p>
+        {invoice ? (
+          <>
+            <p className="font-bold">{INVOICE_TYPE_LABEL[invoice.invoiceType] ?? invoice.invoiceType}</p>
+            {isFiscal ? (
+              <p>
+                Pto. Vta {String(invoice.ptoVta).padStart(4, "0")} — Comp. Nro{" "}
+                {String(invoice.cbteNro ?? 0).padStart(8, "0")}
+              </p>
+            ) : (
+              <p>Ticket Nro {invoice.cbteNro ?? "-"}</p>
+            )}
+            <p>{new Date(invoice.issuedAt ?? invoice.createdAt).toLocaleString("es-AR")}</p>
+          </>
         ) : (
-          <p>Ticket Nro {invoice.cbteNro ?? "-"}</p>
+          <>
+            <p className="font-bold">COMPROBANTE INTERNO</p>
+            <p>Venta Nro {order.orderNumber}</p>
+            <p>{new Date(order.createdAt).toLocaleString("es-AR")}</p>
+          </>
         )}
-        <p>{new Date(invoice.issuedAt ?? invoice.createdAt).toLocaleString("es-AR")}</p>
       </div>
 
-      {invoice.customer && (
+      {(invoice?.customer ?? order.customer) && (
         <div className="border-b border-dashed border-black py-1">
-          <p>Cliente: {invoice.customer.businessName ?? invoice.customer.name}</p>
-          {invoice.customer.docNumber && (
+          <p>Cliente: {invoice?.customer?.businessName ?? invoice?.customer?.name ?? order.customer?.name}</p>
+          {invoice?.customer?.docNumber && (
             <p>
               {invoice.customer.docType}: {invoice.customer.docNumber}
             </p>
@@ -160,7 +174,7 @@ export function ThermalReceipt({
         )}
       </div>
 
-      {isFiscal && invoice.status === "ISSUED" && (
+      {isFiscal && invoice?.status === "ISSUED" && (
         <div className="mt-2 space-y-0.5 border-t border-dashed border-black pt-1 text-center">
           <p>CAE: {invoice.cae}</p>
           <p>Vto. CAE: {invoice.caeVto ? new Date(invoice.caeVto).toLocaleDateString("es-AR") : "-"}</p>

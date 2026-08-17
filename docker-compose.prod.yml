@@ -44,6 +44,11 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        # Solo para máquinas de desarrollo con antivirus que intercepta
+        # HTTPS: sin esto `pnpm install` falla en el build con
+        # UNABLE_TO_VERIFY_LEAF_SIGNATURE. Vacío en producción.
+        EXTRA_CA_CERT_B64: "${EXTRA_CA_CERT_B64:-}"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -58,9 +63,46 @@ services:
       PORT: 3001
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      # Clave maestra AES-256-GCM del cifrado en reposo de las credenciales
+      # de AFIP (certificado y clave privada). Sin ella la API no puede
+      # guardar ni leer una configuración fiscal. Ver EncryptionService.
+      ENCRYPTION_KEY: "${ENCRYPTION_KEY:?falta ENCRYPTION_KEY en .env - generar con openssl rand -hex 32}"
       AFIP_MOCK: ${AFIP_MOCK:-false}
       WOO_MOCK: ${WOO_MOCK:-false}
       WOO_RATE_LIMIT_PER_SEC: ${WOO_RATE_LIMIT_PER_SEC:-5}
+      # Tienda Nube. Sin CLIENT_ID/CLIENT_SECRET la integración queda
+      # deshabilitada: no se puede iniciar OAuth ni verificar la firma de sus
+      # webhooks. Con TIENDANUBE_MOCK=true corre contra el simulador en
+      # memoria — es el modo en el que se puede probar todo el flujo antes de
+      # que Tienda Nube apruebe la aplicación de partner.
+      TIENDANUBE_CLIENT_ID: ${TIENDANUBE_CLIENT_ID:-}
+      TIENDANUBE_CLIENT_SECRET: ${TIENDANUBE_CLIENT_SECRET:-}
+      TIENDANUBE_CONTACT_EMAIL: ${TIENDANUBE_CONTACT_EMAIL:-}
+      TIENDANUBE_MOCK: ${TIENDANUBE_MOCK:-false}
+      TIENDANUBE_RATE_LIMIT_PER_SEC: ${TIENDANUBE_RATE_LIMIT_PER_SEC:-2}
+      # Suscripción del SaaS. Sin MP_WEBHOOK_SECRET la API rechaza todos los
+      # webhooks de Mercado Pago a propósito (no hay forma de validar que sean
+      # auténticos) — ver MpWebhookController.
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:-}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
+      BILLING_TRIAL_DAYS: ${BILLING_TRIAL_DAYS:-30}
+      BILLING_GRACE_DAYS: ${BILLING_GRACE_DAYS:-10}
+      BILLING_WARN_BEFORE_DAYS: ${BILLING_WARN_BEFORE_DAYS:-7}
+      # Solo para máquinas de desarrollo con un antivirus que intercepta
+      # HTTPS (AVG/Avast/Kaspersky "Web Shield" y similares): esos programas
+      # re-firman cada certificado TLS con una CA propia que Windows conoce
+      # pero el contenedor no, y entonces TODA llamada saliente falla con
+      # UNABLE_TO_VERIFY_LEAF_SIGNATURE (AFIP, Mercado Pago, WooCommerce).
+      # Apuntar a un PEM montado abajo para que Node confíe también en esa CA.
+      # VACÍO EN PRODUCCIÓN: en el servidor no hay antivirus interceptando.
+      #
+      # Se lee de EXTRA_CA_CERTS_PATH y no de NODE_EXTRA_CA_CERTS a propósito:
+      # AVG define esa segunda variable a nivel de Windows apuntando a una ruta
+      # del host (C:\ProgramData\AVG\...), y en Docker Compose las variables del
+      # shell tienen prioridad sobre las del .env — así que el valor del .env
+      # quedaba pisado y el contenedor buscaba una ruta de Windows inexistente.
+      NODE_EXTRA_CA_CERTS: ${EXTRA_CA_CERTS_PATH:-}
     ports:
       - "3001:3001"
     volumes:
@@ -68,6 +110,10 @@ services:
       # apps/api/src/products/product-image.storage.ts) — sin esto se
       # pierden en cada `up --build` porque la capa de imagen se descarta.
       - api_uploads:/repo/uploads
+      # CAs extra de confianza. Solo se usa en máquinas de desarrollo con un
+      # antivirus que intercepta HTTPS (ver NODE_EXTRA_CA_CERTS arriba); en
+      # el servidor la carpeta está vacía y el montaje no hace nada.
+      - ./certs:/repo/certs:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 10s

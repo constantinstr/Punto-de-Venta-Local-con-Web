@@ -28,3 +28,22 @@ export async function withAuthLookupContext<T>(fn: (tx: Prisma.TransactionClient
     return fn(tx);
   });
 }
+
+// Contexto del staff del SaaS (rol SUPERADMIN, que por definición no tiene
+// tenantId): habilita leer/escribir TODOS los tenants y su historial de
+// suscripción, para el panel de plataforma.
+//
+// Usa una variable de sesión PROPIA (`app.platform_admin`) en vez de
+// reutilizar la de withAuthLookupContext, y solo dos tablas la honran:
+// "Tenant" y "SubscriptionEvent" (ver migración ..._subscriptions). La
+// consecuencia buscada es que este contexto NO puede leer "User" —donde vive
+// passwordHash—, y que el de login no puede leer tenants ajenos: un bug en
+// cualquiera de los dos no alcanza al otro.
+//
+// Solo debe usarse detrás de endpoints con @Roles(SUPERADMIN).
+export async function withPlatformContext<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.platform_admin', 'true', true)`;
+    return fn(tx);
+  });
+}

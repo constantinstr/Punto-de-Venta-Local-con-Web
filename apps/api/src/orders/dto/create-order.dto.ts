@@ -23,6 +23,12 @@ export class CreateOrderDto {
   @IsString()
   cashShiftId?: string;
 
+  // Requerido en la práctica cuando algún payment es CURRENT_ACCOUNT (se
+  // valida en el servicio) — ver OrdersService.attemptCreate.
+  @IsOptional()
+  @IsString()
+  customerId?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

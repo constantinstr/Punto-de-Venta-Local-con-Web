@@ -4,6 +4,7 @@ import { getRedisConnection } from '../redis/redis-connection';
 import { buildTraXml } from './tra.util';
 import { signTra } from './cms-signer';
 import { parseXml, postSoap } from './soap.util';
+import { EncryptionService } from '../common/crypto/encryption.service';
 
 const WSAA_URL = {
   homologacion: 'https://wsaahomo.afip.gov.ar/ws/services/LoginCms',
@@ -44,16 +45,23 @@ function unwrapSoapBody(
 // se persiste en Postgres (a diferencia del diseño original de Fase 1),
 // evitando guardar un token de sesión de larga vida en una tabla.
 //
-// NOTA DE IMPLEMENTACIÓN: este servicio no se pudo probar contra el WSAA
-// real de AFIP (no hay certificados de homologación disponibles en este
-// entorno) — está implementado siguiendo al pie de la letra la
-// especificación WSAA, pero la primera prueba real contra
-// wsaahomo.afip.gov.ar queda pendiente para cuando exista un CUIT de
-// prueba con certificado habilitado.
+// VERIFICADO contra wsaahomo.afip.gov.ar el 17/08/2026: devuelve un Ticket
+// de Acceso válido (src=CN=wsaahomo, dst=CN=wsfe) con el certificado de
+// homologación emitido por WSASS.
+//
+// El certificado TIENE que salir del circuito de homologación (WSASS): uno
+// de producción es criptográficamente válido pero WSAA de homologación lo
+// rechaza con `cms.cert.untrusted`, porque confía en otra AC. Se distinguen
+// por el emisor, no por el nombre que uno le haya puesto:
+//   homologación -> issuer CN=Computadores Test, O=AFIP
+//   producción   -> issuer CN=Computadores,      O=AFIP
+// Verificable con: openssl x509 -in cert.crt -noout -issuer
 @Injectable()
 export class AfipAuthService implements OnModuleDestroy {
   private readonly logger = new Logger(AfipAuthService.name);
   private readonly redis = new Redis(getRedisConnection());
+
+  constructor(private readonly encryption: EncryptionService) {}
 
   // Sin esto, el cliente ioredis deja un socket abierto que nunca se cierra
   // solo — cuelga tanto `nest start` en shutdown como los tests e2e (Jest
@@ -76,11 +84,21 @@ export class AfipAuthService implements OnModuleDestroy {
       `Solicitando nuevo Ticket de Acceso WSAA para store=${credential.storeId}`,
     );
 
+    // ÚNICO punto del sistema donde la clave privada existe en texto plano, y
+    // solo dentro de este scope: se descifra justo antes de firmar el CMS y
+    // no se guarda en ninguna propiedad, cache ni log. El Ticket de Acceso
+    // que se cachea en Redis es el RESULTADO de la firma, nunca la clave.
     const traXml = buildTraXml('wsfe');
     const cms = signTra(
       traXml,
-      credential.crtCertificate,
-      credential.keyCertificate,
+      this.encryption.decryptIfLegacyPlaintext(
+        credential.crtCertificate,
+        `crt store=${credential.storeId}`,
+      ),
+      this.encryption.decryptIfLegacyPlaintext(
+        credential.keyCertificate,
+        `key store=${credential.storeId}`,
+      ),
     );
     const url = credential.isProduction
       ? WSAA_URL.produccion

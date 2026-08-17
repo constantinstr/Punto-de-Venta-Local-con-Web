@@ -1,33 +1,113 @@
 @import "tailwindcss";
 
-/* Sistema de diseño del POS — paleta cálida (no zinc/negro puro) con
-   elevación real entre el fondo de página y las tarjetas/paneles, y un
-   color de acento (índigo) para acciones primarias. Los tokens ya son
-   dark-mode-aware acá (via prefers-color-scheme), así que en los
-   componentes no hace falta repetir "dark:" para background/foreground/
-   surface/border/muted — un solo bg-surface, por ejemplo, ya resuelve el
-   valor correcto en cada modo. accent/accent-foreground quedan iguales en
-   ambos modos a propósito: el contraste ya es alto en los dos casos. */
+/* ──────────────────────────────────────────────────────────────────────────
+   Sistema de diseño del POS
+   ──────────────────────────────────────────────────────────────────────────
+   El tema tiene TRES estados, no dos, y por eso el CSS se estructura así:
+
+     :root                                    -> paleta clara (el default)
+     @media (prefers-color-scheme: dark)
+       :root:not([data-theme="light"])        -> oscuro por preferencia del SO
+     :root[data-theme="dark"]                 -> oscuro elegido a mano
+
+   El `:not([data-theme="light"])` es lo que hace que elegir "Claro" en la app
+   le gane a un Windows configurado en oscuro. Y el bloque [data-theme="dark"]
+   hace que gane en el otro sentido. Sin los dos, el selector solo funcionaría
+   en una dirección.
+
+   El atributo lo estampa un script inline en layout.tsx ANTES del primer
+   pintado — si se aplicara al hidratar, se vería un flash del tema anterior
+   en cada carga.
+
+   Regla al agregar componentes: los colores se toman SIEMPRE de estos tokens,
+   nunca se declaran adentro de un @media o de un [data-theme]. Un color cuyo
+   única definición vive detrás de [data-theme] no aplica en el estado
+   "automático", que es el que ve la mayoría. */
+
 :root {
-  --background: #faf9f7;
-  --foreground: #1c1917;
+  /* Neutros cálidos: el fondo es apenas más oscuro que las tarjetas para que
+     los paneles "floten" sin necesidad de sombras pesadas. */
+  --background: #f6f5f2;
+  --foreground: #1a1817;
   --surface: #ffffff;
-  --muted: #78716c;
-  --border: #e7e5e4;
+  --surface-muted: #eeece7;
+  --muted: #6d6862;
+  --border: #e3e0da;
+  --border-strong: #cdc8c0;
   --accent: #4f46e5;
   --accent-foreground: #ffffff;
-  --accent-muted: #eef2ff;
+  --accent-muted: #ecebfd;
+  /* Colores semánticos: estado, no identidad. No son el acento. */
+  --success: #15803d;
+  --success-muted: #e7f4ec;
+  --danger: #b91c1c;
+  --danger-muted: #fceceb;
+  --warning: #9a6200;
+  --warning-muted: #fbf1dc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* El oscuro anterior era plano: #18181b de fondo contra #232326 de
+       tarjeta casi no se distinguían. Acá el fondo baja y la superficie
+       sube, para que haya elevación real. */
+    --background: #121216;
+    --foreground: #eceaef;
+    --surface: #1c1c22;
+    --surface-muted: #24242c;
+    --muted: #9b96a3;
+    --border: #2f2f3a;
+    --border-strong: #43434f;
+    /* Más claro que en modo claro para que se despegue del fondo, pero no
+       tanto como para que el texto blanco encima pierda contraste. */
+    --accent: #5f56e8;
+    --accent-foreground: #ffffff;
+    --accent-muted: #23204a;
+    --success: #4ade80;
+    --success-muted: #10281a;
+    --danger: #fca5a5;
+    --danger-muted: #2b1518;
+    --warning: #f0c063;
+    --warning-muted: #2a2010;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #121216;
+  --foreground: #eceaef;
+  --surface: #1c1c22;
+  --surface-muted: #24242c;
+  --muted: #9b96a3;
+  --border: #2f2f3a;
+  --border-strong: #43434f;
+  --accent: #5f56e8;
+  --accent-foreground: #ffffff;
+  --accent-muted: #23204a;
+  --success: #4ade80;
+  --success-muted: #10281a;
+  --danger: #fca5a5;
+  --danger-muted: #2b1518;
+  --warning: #f0c063;
+  --warning-muted: #2a2010;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-muted: var(--accent-muted);
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-danger: var(--danger);
+  --color-danger-muted: var(--danger-muted);
+  --color-warning: var(--warning);
+  --color-warning-muted: var(--warning-muted);
   /* Fuentes del sistema, no un webfont de Google Fonts: evita depender de
      red en build time (rompía `docker build`, ver layout.tsx) y es más
      liviano para una PC de mostrador — coherente con el resto del diseño
@@ -39,21 +119,13 @@
     ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #18181b;
-    --foreground: #f4f4f5;
-    --surface: #232326;
-    --muted: #a1a1aa;
-    --border: #333338;
-    --accent-muted: #26234a;
-  }
-}
-
+/* El <body> toma la tipografía del token vía la clase `font-sans` que le pone
+   layout.tsx. Antes acá había un `font-family: Arial` que PISABA el token: las
+   pantallas que declaraban `font-sans` se veían con una fuente y el resto con
+   otra. No volver a poner una familia acá. */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 /* Impresión de comprobantes (Sprint 6) y de arqueos de caja (Sprint 8):

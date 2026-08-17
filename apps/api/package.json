@@ -15,6 +15,7 @@
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
+    "encrypt-credentials": "node dist/scripts/encrypt-fiscal-credentials.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -10,15 +9,18 @@ import {
   type TransactionClient,
 } from '@pos/database';
 import { getAvailableStock } from './stock-calculation';
+import { findStockLevel } from './stock-mutations';
 import type { AuthUser } from '../common/types/auth-user';
 import type { AdjustStockDto } from './dto/adjust-stock.dto';
-import { WooStockSyncService } from '../woocommerce/woo-stock-sync.service';
+import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class StockService {
-  private readonly logger = new Logger(StockService.name);
-
-  constructor(private readonly wooStockSyncService: WooStockSyncService) {}
+  constructor(
+    private readonly ecommerceSync: EcommerceSyncService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async findAllForStore(tenantId: string, storeId: string) {
     return withTenantContext(tenantId, async (tx) => {
@@ -75,18 +77,19 @@ export class StockService {
       await this.assertStoreExists(tx, tenantId, dto.storeId);
       const target = await this.resolveTarget(tx, tenantId, dto);
 
-      const existing = await tx.stockLevel.findFirst({
-        where: {
-          storeId: dto.storeId,
-          productId: dto.variantId ? null : dto.productId,
-          variantId: dto.variantId ?? null,
-        },
+      const existing = await findStockLevel(tx, {
+        storeId: dto.storeId,
+        productId: dto.productId ?? null,
+        variantId: dto.variantId ?? null,
       });
 
-      const nextQuantity =
-        dto.absoluteQuantity !== undefined
+      const hasQuantityChange =
+        dto.delta !== undefined || dto.absoluteQuantity !== undefined;
+      const nextQuantity = hasQuantityChange
+        ? dto.absoluteQuantity !== undefined
           ? dto.absoluteQuantity
-          : Number(existing?.quantity ?? 0) + dto.delta!;
+          : Number(existing?.quantity ?? 0) + dto.delta!
+        : Number(existing?.quantity ?? 0);
 
       // Prisma no permite pasar null en los campos de una clave única
       // compuesta para findUnique/upsert (NULL nunca es "igual" a NULL en
@@ -95,7 +98,12 @@ export class StockService {
       const level = existing
         ? await tx.stockLevel.update({
             where: { id: existing.id },
-            data: { quantity: nextQuantity },
+            data: {
+              quantity: nextQuantity,
+              ...(dto.minAlertStock !== undefined && {
+                minAlertStock: dto.minAlertStock,
+              }),
+            },
           })
         : await tx.stockLevel.create({
             data: {
@@ -104,21 +112,33 @@ export class StockService {
               productId: dto.variantId ? null : dto.productId,
               variantId: dto.variantId,
               quantity: nextQuantity,
+              minAlertStock: dto.minAlertStock,
             },
           });
 
-      // Auditoría mínima (MVP): log estructurado. Una tabla de auditoría
-      // persistente queda para el endurecimiento de Sprint 9.
-      this.logger.log(
-        `Ajuste de stock — tenant=${tenantId} store=${dto.storeId} target=${target.label} ` +
-          `by=${actor.email} reason="${dto.reason}" -> quantity=${nextQuantity}`,
-      );
+      await this.auditService.record(tx, tenantId, {
+        storeId: dto.storeId,
+        userId: actor.userId,
+        userEmail: actor.email,
+        action: 'stock.adjust',
+        entityType: 'StockLevel',
+        entityId: level.id,
+        metadata: {
+          target: target.label,
+          reason: dto.reason,
+          previousQuantity: Number(existing?.quantity ?? 0),
+          quantity: nextQuantity,
+          ...(dto.minAlertStock !== undefined && {
+            minAlertStock: dto.minAlertStock,
+          }),
+        },
+      });
 
       return level;
     }).then(async (level) => {
       // Fuera de la transacción a propósito — mismo motivo que en
       // OrdersService.create: encolar sync no puede hacer fallar el ajuste.
-      await this.wooStockSyncService.enqueueStockSync(tenantId, dto.storeId, [
+      await this.ecommerceSync.enqueueStockSync(tenantId, dto.storeId, [
         {
           productId: dto.variantId ? null : dto.productId,
           variantId: dto.variantId ?? null,
@@ -139,7 +159,13 @@ export class StockService {
 
     const hasDelta = dto.delta !== undefined;
     const hasAbsolute = dto.absoluteQuantity !== undefined;
-    if (hasDelta === hasAbsolute) {
+    const hasQuantityChange = hasDelta || hasAbsolute;
+    // minAlertStock puede venir solo, sin tocar la cantidad — el XOR de
+    // delta/absoluteQuantity solo se exige si el request sí pretende
+    // cambiar la cantidad (o si no vino ninguno de los tres campos).
+    const onlySettingAlert =
+      !hasQuantityChange && dto.minAlertStock !== undefined;
+    if (hasDelta === hasAbsolute && !onlySettingAlert) {
       throw new BadRequestException(
         'Especificá exactamente uno de delta o absoluteQuantity',
       );

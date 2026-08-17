@@ -32,7 +32,7 @@ export class CategoriesController {
   @Post()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateCategoryDto) {
-    return this.categoriesService.create(requireTenant(user), dto);
+    return this.categoriesService.create(requireTenant(user), user, dto);
   }
 
   @Patch(':id')
@@ -42,12 +42,12 @@ export class CategoriesController {
     @Param('id') id: string,
     @Body() dto: UpdateCategoryDto,
   ) {
-    return this.categoriesService.update(requireTenant(user), id, dto);
+    return this.categoriesService.update(requireTenant(user), user, id, dto);
   }
 
   @Delete(':id')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER)
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.categoriesService.remove(requireTenant(user), id);
+    return this.categoriesService.remove(requireTenant(user), user, id);
   }
 }

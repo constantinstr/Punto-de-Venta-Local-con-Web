@@ -212,6 +212,7 @@ describe('Reports (Sprint 8) — e2e', () => {
     await request(app.getHttpServer())
       .post(`/orders/${cancelledOrder.id}/cancel`)
       .set(tenant.auth)
+      .send({ reason: 'prueba e2e' })
       .expect(201);
 
     const today = new Date().toISOString().slice(0, 10);

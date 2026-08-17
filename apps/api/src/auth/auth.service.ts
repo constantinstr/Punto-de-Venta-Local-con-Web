@@ -13,6 +13,7 @@ import {
 import type { RegisterTenantDto } from './dto/register-tenant.dto';
 import type { LoginDto } from './dto/login.dto';
 import { hashRefreshToken } from './token-hash.util';
+import { SubscriptionService } from '../billing/subscription.service';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL = '7d';
@@ -37,6 +38,7 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
 
   // Crea el Tenant, su primer Store y el usuario OWNER en una única
@@ -61,6 +63,12 @@ export class AuthService {
           id: tenantId,
           name: dto.tenantName,
           slug: slugify(dto.tenantName),
+          // Todo comercio nuevo arranca con período de prueba; el contador se
+          // le muestra en el banner desde el primer día. contactEmail es la
+          // copia que usa el panel de plataforma para saber a quién
+          // reclamarle sin leer "User" cross-tenant (ahí vive passwordHash).
+          trialEndsAt: this.subscriptionService.trialEndsAtFromNow(),
+          contactEmail: dto.ownerEmail,
         },
       });
 

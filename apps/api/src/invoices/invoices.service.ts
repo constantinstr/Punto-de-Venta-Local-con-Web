@@ -19,6 +19,9 @@ import { buildFeCaeAmounts } from '../afip/fe-cae-amounts.util';
 import { buildAfipQrUrl } from '../afip/qr.util';
 import {
   determineInvoiceType,
+  resolveCondicionIvaReceptor,
+  creditNoteTypeFor,
+  CREDIT_NOTE_TYPES,
   AFIP_CBTE_TIPO,
   AFIP_DOC_TIPO,
 } from '../afip/invoice-type.util';
@@ -61,10 +64,16 @@ export class InvoicesService {
     });
   }
 
+  // Devuelve el comprobante DE VENTA de la orden, no su nota de crédito: es
+  // lo que se reimprime desde el historial. La NC se consulta aparte.
   async findByOrder(tenantId: string, orderId: string) {
     return withTenantContext(tenantId, async (tx) => {
-      const invoice = await tx.invoice.findUnique({
-        where: { orderId },
+      const invoice = await tx.invoice.findFirst({
+        where: {
+          orderId,
+          tenantId,
+          invoiceType: { notIn: CREDIT_NOTE_TYPES },
+        },
         include: INVOICE_INCLUDE,
       });
       if (!invoice)
@@ -73,6 +82,187 @@ export class InvoicesService {
         );
       return invoice;
     });
+  }
+
+  // Emite la nota de crédito que anula una factura ya autorizada.
+  //
+  // MISMA ESTRUCTURA QUE issueFiscal Y POR EL MISMO MOTIVO: la ida y vuelta a
+  // AFIP (WSAA + WSFE) puede tardar varios segundos, más que el timeout por
+  // defecto de una transacción interactiva de Prisma (5s). Se carga y valida
+  // en una transacción corta, se llama a AFIP FUERA de toda transacción, y se
+  // persiste en una segunda transacción corta.
+  //
+  // A diferencia de issueFiscal, si AFIP rechaza esto LANZA en vez de
+  // guardar un comprobante REJECTED: quien llama (la anulación de una venta)
+  // tiene que poder abortar y no dejar la orden cancelada sin respaldo
+  // fiscal. Además, no persistir el rechazo deja libre el índice único de
+  // relatedInvoiceId para poder reintentar más tarde.
+  async issueCreditNote(
+    tenantId: string,
+    originalInvoiceId: string,
+  ): Promise<Awaited<ReturnType<typeof this.findOne>>> {
+    const prepared = await withTenantContext(tenantId, async (tx) => {
+      const original = await tx.invoice.findFirst({
+        where: { id: originalInvoiceId, tenantId },
+        include: { customer: true, order: { include: { items: true } } },
+      });
+      if (!original) throw new NotFoundException('Comprobante no encontrado');
+
+      if (original.status !== InvoiceStatus.ISSUED || !original.cae) {
+        throw new BadRequestException(
+          'Solo se puede anular por nota de crédito un comprobante autorizado por AFIP',
+        );
+      }
+
+      const creditNoteType = creditNoteTypeFor(original.invoiceType);
+      if (!creditNoteType) {
+        throw new BadRequestException(
+          `El comprobante ${original.invoiceType} no se anula por nota de crédito`,
+        );
+      }
+
+      const alreadyVoided = await tx.invoice.findFirst({
+        where: { relatedInvoiceId: original.id },
+      });
+      if (alreadyVoided) {
+        throw new ConflictException(
+          'Este comprobante ya fue anulado por una nota de crédito',
+        );
+      }
+
+      const fiscalConfig = await tx.fiscalConfig.findFirst({
+        where: { storeId: original.storeId, tenantId },
+      });
+      if (!fiscalConfig) {
+        throw new BadRequestException(
+          'El local ya no tiene configuración fiscal cargada — no se puede emitir la nota de crédito',
+        );
+      }
+
+      return { original, creditNoteType, fiscalConfig };
+    });
+
+    const { original, creditNoteType, fiscalConfig } = prepared;
+
+    // Se recalcula desde los ítems de la orden, que son inmutables una vez
+    // creada: da exactamente los mismos importes que la factura original y,
+    // además, provee el desglose de alícuotas que necesitan las NC A y B.
+    const amounts = buildFeCaeAmounts(original.order.items);
+    const cbteTipo = AFIP_CBTE_TIPO[creditNoteType];
+    const customer = original.customer;
+
+    const docTipo =
+      customer?.docType === 'CUIT'
+        ? AFIP_DOC_TIPO.CUIT
+        : customer?.docType === 'DNI'
+          ? AFIP_DOC_TIPO.DNI
+          : customer?.docType === 'PASAPORTE'
+            ? AFIP_DOC_TIPO.PASAPORTE
+            : AFIP_DOC_TIPO.FINAL_CONSUMER;
+    const docNro = customer?.docNumber ? Number(customer.docNumber) : 0;
+
+    const credential = {
+      storeId: fiscalConfig.storeId,
+      cuit: fiscalConfig.cuit,
+      ptoVta: fiscalConfig.ptoVta,
+      crtCertificate: fiscalConfig.crtCertificate,
+      keyCertificate: fiscalConfig.keyCertificate,
+      isProduction: fiscalConfig.isProduction,
+    };
+
+    let cbteNro: number;
+    let result: Awaited<ReturnType<AfipGateway['solicitarCae']>>;
+    try {
+      const lastNro = await this.afipGateway.getLastVoucherNumber(
+        credential,
+        cbteTipo,
+      );
+      cbteNro = lastNro + 1;
+      result = await this.afipGateway.solicitarCae(credential, {
+        cbteTipo,
+        docTipo,
+        docNro,
+        condicionIvaReceptorId: resolveCondicionIvaReceptor(
+          customer?.taxCondition,
+        ),
+        cbteNro,
+        importeTotal: amounts.importeTotal,
+        importeNeto: amounts.importeNeto,
+        importeIva: amounts.importeIva,
+        importeExento: amounts.importeExento,
+        importeNoGravado: amounts.importeNoGravado,
+        alicuotas: amounts.alicuotas,
+        // Lo que hace que AFIP sepa QUÉ comprobante se está anulando. El
+        // Cuit es el del EMISOR del comprobante original (nosotros).
+        cbtesAsoc: [
+          {
+            tipo: AFIP_CBTE_TIPO[original.invoiceType],
+            ptoVta: original.ptoVta,
+            nro: original.cbteNro!,
+            cuit: fiscalConfig.cuit,
+          },
+        ],
+      });
+    } catch (err) {
+      this.logger.error(
+        `Fallo de conectividad/protocolo con AFIP al emitir nota de crédito de ${original.id}: ${String(err)}`,
+      );
+      throw new BadRequestException(
+        `No se pudo emitir la nota de crédito: ${String(err)}`,
+      );
+    }
+
+    if (!result.approved) {
+      this.logger.error(
+        `AFIP rechazó la nota de crédito de ${original.id}: ${result.observaciones}`,
+      );
+      throw new BadRequestException(
+        `AFIP rechazó la nota de crédito: ${result.observaciones}`,
+      );
+    }
+
+    const qrUrl = buildAfipQrUrl({
+      fecha: new Date().toISOString().slice(0, 10),
+      cuit: Number(fiscalConfig.cuit),
+      ptoVta: fiscalConfig.ptoVta,
+      tipoCmp: cbteTipo,
+      nroCmp: cbteNro,
+      importe: amounts.importeTotal,
+      moneda: 'PES',
+      ctz: 1,
+      tipoDocRec: docTipo,
+      nroDocRec: docNro,
+      tipoCodAut: 'E',
+      codAut: Number(result.cae),
+    });
+
+    return withTenantContext(tenantId, (tx) =>
+      tx.invoice.create({
+        data: {
+          tenantId,
+          storeId: original.storeId,
+          orderId: original.orderId,
+          customerId: original.customerId,
+          relatedInvoiceId: original.id,
+          invoiceType: creditNoteType,
+          ptoVta: fiscalConfig.ptoVta,
+          cbteNro,
+          cae: result.cae,
+          caeVto: result.caeVto,
+          afipQrUrl: qrUrl,
+          status: InvoiceStatus.ISSUED,
+          subtotalNeto:
+            amounts.importeNeto +
+            amounts.importeExento +
+            amounts.importeNoGravado,
+          vatAmount: amounts.importeIva,
+          total: amounts.importeTotal,
+          afipResponse: result.raw as Prisma.InputJsonValue,
+          issuedAt: new Date(),
+        },
+        include: INVOICE_INCLUDE,
+      }),
+    );
   }
 
   // Ticket X es numeración local (nunca AFIP) — se puede reintentar sin
@@ -201,10 +391,29 @@ export class InvoicesService {
         throw new BadRequestException('Factura A requiere el CUIT del cliente');
       }
 
-      return { order, customer, fiscalConfig, finalType, docTipo, docNro };
+      return {
+        order,
+        customer,
+        fiscalConfig,
+        finalType,
+        docTipo,
+        docNro,
+        // RG 5616: la condición del receptor frente al IVA es obligatoria.
+        // Sin cliente identificado, consumidor final.
+        condicionIvaReceptorId: resolveCondicionIvaReceptor(
+          customer?.taxCondition,
+        ),
+      };
     });
 
-    const { order, fiscalConfig, finalType, docTipo, docNro } = prepared;
+    const {
+      order,
+      fiscalConfig,
+      finalType,
+      docTipo,
+      docNro,
+      condicionIvaReceptorId,
+    } = prepared;
     const amounts = buildFeCaeAmounts(order.items);
     const cbteTipo = AFIP_CBTE_TIPO[finalType];
     const credential = {
@@ -241,6 +450,7 @@ export class InvoicesService {
         cbteTipo,
         docTipo,
         docNro,
+        condicionIvaReceptorId,
         cbteNro,
         importeTotal: amounts.importeTotal,
         importeNeto: amounts.importeNeto,
@@ -325,8 +535,14 @@ export class InvoicesService {
       throw new BadRequestException('No se puede facturar una orden cancelada');
     }
 
-    const existing = await tx.invoice.findUnique({
-      where: { orderId: order.id },
+    // findFirst y no findUnique: orderId dejó de ser único al aparecer las
+    // notas de crédito (una orden anulada tiene factura + NC). Se busca solo
+    // el comprobante "de venta", excluyendo las NC.
+    const existing = await tx.invoice.findFirst({
+      where: {
+        orderId: order.id,
+        invoiceType: { notIn: CREDIT_NOTE_TYPES },
+      },
     });
     if (existing)
       throw new ConflictException('Esta orden ya tiene un comprobante emitido');

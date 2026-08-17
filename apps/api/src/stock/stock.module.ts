@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { StockController } from './stock.controller';
 import { StockService } from './stock.service';
-import { WooCommerceModule } from '../woocommerce/woocommerce.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [WooCommerceModule],
+  imports: [IntegrationsModule, AuditModule],
   controllers: [StockController],
   providers: [StockService],
 })

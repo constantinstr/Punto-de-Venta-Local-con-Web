@@ -1,4 +1,10 @@
-import { IsNumber, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class StockEntryDto {
   @IsString()
@@ -8,4 +14,9 @@ export class StockEntryDto {
   @IsNumber()
   @Min(0)
   quantity!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minAlertStock?: number;
 }

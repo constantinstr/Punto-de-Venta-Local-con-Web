@@ -9,6 +9,9 @@ import type {
   Store,
   StockRow,
   AdjustStockInput,
+  UpdateCategoryInput,
+  CreateStoreInput,
+  UpdateStoreInput,
 } from "@pos/shared-types";
 import { apiGet, apiPost, apiPatch, apiDelete, apiPostFile } from "@/lib/api";
 
@@ -27,10 +30,44 @@ export function useCreateCategory() {
   });
 }
 
+export function useUpdateCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateCategoryInput }) =>
+      apiPatch<Category>(`/categories/${id}`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["categories"] }),
+  });
+}
+
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiDelete(`/categories/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["categories"] }),
+  });
+}
+
 export function useStores() {
   return useQuery({
     queryKey: ["stores"],
     queryFn: () => apiGet<Store[]>("/stores"),
+  });
+}
+
+export function useCreateStore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateStoreInput) => apiPost<Store>("/stores", input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["stores"] }),
+  });
+}
+
+export function useUpdateStore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateStoreInput }) =>
+      apiPatch<Store>(`/stores/${id}`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["stores"] }),
   });
 }
 
