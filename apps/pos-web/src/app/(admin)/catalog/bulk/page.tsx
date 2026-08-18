@@ -12,6 +12,7 @@ import {
   useBulkPricePreview,
   useBulkPriceApply,
 } from "@/hooks/useProductsImport";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
 
 export default function CatalogBulkPage() {
@@ -58,6 +59,7 @@ function ImportTab() {
   const downloadTemplate = useDownloadImportTemplate();
   const previewMutation = useImportPreview();
   const commitMutation = useImportCommit();
+  const { isDemo, productsUsage, productsMax } = usePlan();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [committed, setCommitted] = useState<ImportPreviewResult | null>(null);
@@ -94,6 +96,13 @@ function ImportTab() {
       <p className="text-sm text-muted">
         Solo productos simples. La clave es el SKU: si ya existe, se actualiza; si no, se crea.
       </p>
+
+      {isDemo && productsMax !== null && (
+        <p className="rounded border border-accent-muted bg-accent-muted px-3 py-2 text-xs text-accent">
+          La demo permite hasta {productsMax} productos en total ({productsUsage}/{productsMax} cargados).
+          Un archivo que sume más SKU nuevos que ese margen se rechaza entero, sin importar nada.
+        </p>
+      )}
 
       <button
         onClick={() => void downloadTemplate.mutateAsync()}

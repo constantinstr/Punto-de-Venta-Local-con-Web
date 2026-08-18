@@ -5,7 +5,10 @@ import Link from "next/link";
 import type { Store } from "@pos/shared-types";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useStores, useCreateStore, useUpdateStore } from "@/hooks/useCatalog";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
+import { PremiumBadge } from "@/components/common/PremiumBadge";
+import { UpgradeModal } from "@/components/common/UpgradeModal";
 
 export default function StoresPage() {
   const user = useRequireAuth();
@@ -13,12 +16,15 @@ export default function StoresPage() {
   const createStore = useCreateStore();
 
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const { isDemo, storesMax } = usePlan();
 
   if (!user) return null;
   const canManage = user.role === "OWNER" || user.role === "ADMIN";
+  const atStoreCap = isDemo && storesMax !== null && (stores?.length ?? 0) >= storesMax;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -45,12 +51,29 @@ export default function StoresPage() {
       <div className="mb-1 mt-1 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-foreground">Locales</h1>
         {canManage && (
-          <button
-            onClick={() => setShowCreate((v) => !v)}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground"
-          >
-            {showCreate ? "Cerrar" : "+ Nuevo local"}
-          </button>
+          atStoreCap ? (
+            <>
+              <button
+                onClick={() => setShowUpgrade(true)}
+                className="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground opacity-60"
+              >
+                + Nuevo local <PremiumBadge />
+              </button>
+              {showUpgrade && (
+                <UpgradeModal
+                  reason={`La demo permite un solo local. Registrá tu comercio para abrir sucursales.`}
+                  onClose={() => setShowUpgrade(false)}
+                />
+              )}
+            </>
+          ) : (
+            <button
+              onClick={() => setShowCreate((v) => !v)}
+              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground"
+            >
+              {showCreate ? "Cerrar" : "+ Nuevo local"}
+            </button>
+          )
         )}
       </div>
       <p className="mb-6 text-sm text-muted">

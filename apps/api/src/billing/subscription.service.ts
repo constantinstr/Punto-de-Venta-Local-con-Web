@@ -12,10 +12,21 @@ import {
   type SubscriptionConfig,
   type SubscriptionSnapshot,
 } from './subscription-status.util';
+import { PlanService, type PremiumFeature } from './plan.service';
 
 const DEFAULT_TRIAL_DAYS = 30;
 const DEFAULT_GRACE_DAYS = 10;
 const DEFAULT_WARN_BEFORE_DAYS = 7;
+
+export interface PlanView {
+  tier: 'standard' | 'demo';
+  isDemo: boolean;
+  demoExpiresAt: string | null;
+  demoDaysRemaining: number | null;
+  features: Record<PremiumFeature, boolean>;
+  limits: { maxProducts: number | null; maxStores: number | null };
+  usage: { products: number; stores: number } | null;
+}
 
 export interface TenantSubscriptionView {
   tenantId: string;
@@ -28,13 +39,17 @@ export interface TenantSubscriptionView {
   enforcementPolicy: Tenant['enforcementPolicy'];
   hasMercadoPagoSubscription: boolean;
   snapshot: SubscriptionSnapshot;
+  plan: PlanView;
 }
 
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly planService: PlanService,
+  ) {}
 
   // ConfigService devuelve las variables de entorno como STRING. Sin este
   // Number() explícito, trialEndsAtFromNow haría `getDate() + "30"`, que en
@@ -82,7 +97,17 @@ export class SubscriptionService {
     );
   }
 
-  toView(tenant: Tenant): TenantSubscriptionView {
+  // withUsage=true cuenta productos/locales del tenant (dos queries extra) —
+  // solo tiene sentido para el propio comercio viendo su GET /billing/me.
+  // Las vistas de plataforma (listAllTenants, getTenantForPlatform) pasan
+  // false: no tiene sentido pagar ese costo en una lista de N comercios, y
+  // la UI de /platform no muestra "12/20" en ningún lado.
+  async toView(tenant: Tenant, withUsage = false): Promise<TenantSubscriptionView> {
+    const isDemo = tenant.planTier === 'demo';
+    const usage = withUsage && isDemo
+      ? await this.planService.usageOf(tenant.id)
+      : null;
+
     return {
       tenantId: tenant.id,
       tenantName: tenant.name,
@@ -94,18 +119,30 @@ export class SubscriptionService {
       enforcementPolicy: tenant.enforcementPolicy,
       hasMercadoPagoSubscription: Boolean(tenant.mpPreapprovalId),
       snapshot: this.snapshotOf(tenant),
+      plan: {
+        tier: isDemo ? 'demo' : 'standard',
+        isDemo,
+        demoExpiresAt: tenant.demoExpiresAt?.toISOString() ?? null,
+        demoDaysRemaining: isDemo && tenant.demoExpiresAt
+          ? Math.max(0, Math.ceil((tenant.demoExpiresAt.getTime() - Date.now()) / 86_400_000))
+          : null,
+        features: this.planService.featuresFor(isDemo),
+        limits: this.planService.limitsFor(isDemo),
+        usage,
+      },
     };
   }
 
   // Lo que ve el propio comercio sobre su suscripción. Va por el contexto de
   // tenant normal: la fila de Tenant ya le es visible por RLS, no hace falta
-  // ningún privilegio de plataforma.
+  // ningún privilegio de plataforma. Con uso: es el único lugar que necesita
+  // mostrar "12/20 productos".
   async getOwnSubscription(tenantId: string): Promise<TenantSubscriptionView> {
-    return withTenantContext(tenantId, async (tx) => {
-      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
-      if (!tenant) throw new NotFoundException('Tenant no encontrado');
-      return this.toView(tenant);
-    });
+    const tenant = await withTenantContext(tenantId, (tx) =>
+      tx.tenant.findUnique({ where: { id: tenantId } }),
+    );
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+    return this.toView(tenant, true);
   }
 
   async listOwnEvents(tenantId: string, limit = 24) {
@@ -124,7 +161,7 @@ export class SubscriptionService {
     const tenants = await withPlatformContext((tx) =>
       tx.tenant.findMany({ orderBy: { createdAt: 'desc' } }),
     );
-    return tenants.map((t) => this.toView(t));
+    return Promise.all(tenants.map((t) => this.toView(t)));
   }
 
   async getTenantForPlatform(tenantId: string): Promise<Tenant> {

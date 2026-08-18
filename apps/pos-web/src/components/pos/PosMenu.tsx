@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { AuthUser } from "@pos/shared-types";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
+import { usePlan } from "@/hooks/usePlan";
 
 // El punto de venta vive fuera del grupo (admin), así que no tiene el menú
 // lateral: es una pantalla de mostrador a pantalla completa, y el sidebar
@@ -22,6 +23,9 @@ export function PosMenu({
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // /pos vive fuera de (admin), así que no hereda DemoBanner — este es el
+  // único indicador de modo demo que ve un cajero mientras vende.
+  const { isDemo, demoDaysRemaining } = usePlan();
 
   const destinations = NAV_ITEMS.filter(
     (item) => item.href !== "/pos" && item.roles.includes(user.role),
@@ -54,7 +58,12 @@ export function PosMenu({
   }, [open]);
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative flex items-center gap-2">
+      {isDemo && (
+        <span className="rounded bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
+          Demo{demoDaysRemaining !== null ? ` · ${demoDaysRemaining}d` : ""}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

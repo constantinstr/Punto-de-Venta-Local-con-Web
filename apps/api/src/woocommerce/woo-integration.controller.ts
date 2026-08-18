@@ -20,6 +20,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { requireTenant } from '../common/require-tenant';
 import type { AuthUser } from '../common/types/auth-user';
+import { Premium } from '../billing/premium.decorator';
 
 class StoreIdDto {
   @IsString()
@@ -27,9 +28,14 @@ class StoreIdDto {
   storeId!: string;
 }
 
+// Decorador a nivel de clase: las cuatro acciones de acá (probar conexión,
+// sincronizar catálogo, ver/reintentar logs de sync) solo tienen sentido si
+// ya existe un WooCommerceConfig — y crear uno ya está bloqueado en
+// WooConfigController. Queda igual como defensa en profundidad.
 @Controller('integrations/woocommerce')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.OWNER, UserRole.ADMIN)
+@Premium('WOO_SYNC')
 export class WooIntegrationController {
   constructor(
     @Inject(WOO_GATEWAY) private readonly gateway: WooGateway,

@@ -31,7 +31,7 @@ export default function RegisterPage() {
     try {
       const result = await apiPost<{ user: AuthUser; tokens: AuthTokens }>("/auth/register-tenant", form);
       setSession(result.user, result.tokens);
-      router.push("/");
+      router.push("/inicio");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo conectar con la API");
     } finally {

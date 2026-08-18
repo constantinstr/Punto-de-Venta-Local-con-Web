@@ -79,6 +79,23 @@ demostrable, no solo código suelto.
 - Manual de instalación de PC de mostrador (Chrome `--kiosk-printing`, impresora predeterminada).
 - **Entregable**: se puede dar de alta un comercio nuevo sin intervención manual en la base de datos.
 
+## Sprint 11 — Demo pública ("Probar gratis")
+- Landing pública en `/` con CTA "Probar demo gratis" — el dashboard se mudó
+  a `/inicio` (ver `apps/pos-web/src/app/page.tsx`).
+- `POST /demo/start` (anónimo, throttled) provisiona un tenant efímero
+  (`planTier="demo"`, `demoExpiresAt` +7 días) con catálogo de ejemplo, vía
+  `DemoModule` (`apps/api/src/demo/`).
+- Cartel Premium: facturación AFIP, sync WooCommerce/Tienda Nube, más de 20
+  productos o más de 1 local quedan bloqueados server-side
+  (`PlanService`/`PlanFeatureInterceptor`, `apps/api/src/billing/`) — la venta
+  normal (Ticket X) no se toca.
+- Expiración inmediata en `SubscriptionEnforcementInterceptor`; purga física
+  diaria por BullMQ (`DemoCleanupQueue`/`DemoPurgeService`) — sin
+  `onDelete: Cascade` en el schema a propósito, ver el comentario en
+  `demo-purge.service.ts`.
+- **Entregable**: cualquier visitante prueba el sistema completo sin
+  registrarse; el sandbox se autolimpia solo.
+
 ---
 
 **Cómo trabajar cada sprint con Claude Sonnet**: abrir un sprint por vez,

@@ -22,7 +22,7 @@ export default function LoginPage() {
     try {
       const result = await apiPost<{ user: AuthUser; tokens: AuthTokens }>("/auth/login", { email, password });
       setSession(result.user, result.tokens);
-      router.push("/");
+      router.push("/inicio");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo conectar con la API");
     } finally {

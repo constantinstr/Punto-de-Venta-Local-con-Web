@@ -14,7 +14,7 @@ const BACK_OFFICE: UserRole[] = ["OWNER", "ADMIN", "MANAGER"];
 const OWNER_ADMIN: UserRole[] = ["OWNER", "ADMIN"];
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Inicio", roles: ALL_STAFF },
+  { href: "/inicio", label: "Inicio", roles: ALL_STAFF },
   { href: "/pos", label: "Punto de venta", roles: ALL_STAFF },
   { href: "/sales", label: "Ventas", roles: BACK_OFFICE },
   // catalog/stock: POST /products, POST /stock/adjust son OWNER/ADMIN/MANAGER.

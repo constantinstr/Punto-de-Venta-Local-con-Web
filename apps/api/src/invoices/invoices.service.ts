@@ -15,6 +15,7 @@ import {
   type TransactionClient,
 } from '@pos/database';
 import { AFIP_GATEWAY, type AfipGateway } from '../afip/afip-gateway.interface';
+import { PlanService } from '../billing/plan.service';
 import { buildFeCaeAmounts } from '../afip/fe-cae-amounts.util';
 import { buildAfipQrUrl } from '../afip/qr.util';
 import {
@@ -40,6 +41,7 @@ export class InvoicesService {
 
   constructor(
     @Inject(AFIP_GATEWAY) private readonly afipGateway: AfipGateway,
+    private readonly planService: PlanService,
   ) {}
 
   async issue(tenantId: string, dto: CreateInvoiceDto) {
@@ -47,9 +49,15 @@ export class InvoicesService {
     // angostamiento de tipo de una propiedad no sobrevive dentro de un
     // arrow function que la vuelve a leer desde `dto`.
     const requestedType = dto.requestedType;
+    // El Ticket X (o la ausencia de requestedType) NUNCA pasa por acá: es el
+    // comprobante interno no fiscal que necesita cualquier venta de
+    // mostrador, demo o no. El cartel Premium bloquea solo la rama que pide
+    // AFIP de verdad — si se bloqueara /invoices entero se rompería el
+    // cobro normal del POS en la demo.
     if (!requestedType || requestedType === 'TICKET_X') {
       return this.issueTicketXWithRetry(tenantId, dto);
     }
+    await this.planService.assertFeature(tenantId, 'FISCAL_INVOICING');
     return this.issueFiscal(tenantId, dto, requestedType);
   }
 
@@ -101,6 +109,11 @@ export class InvoicesService {
     tenantId: string,
     originalInvoiceId: string,
   ): Promise<Awaited<ReturnType<typeof this.findOne>>> {
+    // En la práctica esto ya es inalcanzable para un tenant demo (no puede
+    // tener ningún Invoice ISSUED con CAE — el gate de arriba en issue()
+    // se lo impide), pero se deja explícito por si el día de mañana aparece
+    // otro camino que deje un comprobante ISSUED sin pasar por issue().
+    await this.planService.assertFeature(tenantId, 'FISCAL_INVOICING');
     const prepared = await withTenantContext(tenantId, async (tx) => {
       const original = await tx.invoice.findFirst({
         where: { id: originalInvoiceId, tenantId },

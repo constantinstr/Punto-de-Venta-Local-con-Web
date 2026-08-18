@@ -30,6 +30,8 @@ import { EncryptionModule } from './common/crypto/encryption.module';
 import { BillingModule } from './billing/billing.module';
 import { DiscountsModule } from './discounts/discounts.module';
 import { SubscriptionEnforcementInterceptor } from './billing/subscription-enforcement.interceptor';
+import { PlanFeatureInterceptor } from './billing/plan-feature.interceptor';
+import { DemoModule } from './demo/demo.module';
 
 @Module({
   imports: [
@@ -67,6 +69,7 @@ import { SubscriptionEnforcementInterceptor } from './billing/subscription-enfor
     PurchasesModule,
     BillingModule,
     DiscountsModule,
+    DemoModule,
   ],
   controllers: [AppController],
   providers: [
@@ -78,6 +81,12 @@ import { SubscriptionEnforcementInterceptor } from './billing/subscription-enfor
     {
       provide: APP_INTERCEPTOR,
       useClass: SubscriptionEnforcementInterceptor,
+    },
+    // Segundo interceptor global, hermano y no extensión del anterior — ver
+    // el comentario en PlanFeatureInterceptor sobre por qué son dos clases.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PlanFeatureInterceptor,
     },
   ],
 })

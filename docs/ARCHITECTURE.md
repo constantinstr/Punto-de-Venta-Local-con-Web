@@ -60,6 +60,31 @@ si se refuerza con:
 Migrar a esquema-por-tenant o base-por-tenant solo si un cliente grande lo
 exige contractualmente (aislamiento físico) — no antes.
 
+### 2.1 Tenants demo (`planTier="demo"`)
+
+La landing pública (`/`) provisiona un tenant real, del mismo tipo que uno
+registrado a mano — mismo RLS, mismos tokens, mismo `AuthUser` — con dos
+campos que lo distinguen: `Tenant.planTier="demo"` y `Tenant.demoExpiresAt`
+(+7 días desde el alta). No existe un usuario "anónimo" ni un rol especial:
+`useRequireAuth`, `RolesGuard` y `requireTenant()` no saben que un tenant es
+demo, y no necesitan saberlo.
+
+Dos capas de enforcement, deliberadamente separadas (ver el comentario en
+`apps/api/src/billing/plan-feature.interceptor.ts`):
+
+- **`SubscriptionEnforcementInterceptor`** responde "¿está al día el pago?" —
+  ahora también corta en seco un demo vencido, sin depender del job de purga.
+- **`PlanFeatureInterceptor` + `@Premium(...)`** responde "¿qué plan tiene?" —
+  bloquea facturación AFIP, sync WooCommerce/Tienda Nube y los topes de
+  productos/locales. Es un interceptor global hermano del anterior, no una
+  extensión: son preguntas distintas y cada una crece por su lado.
+
+La purga física (BullMQ, 1×/día) borra un tenant demo entero a mano, tabla
+por tabla en el orden que impone el grafo de FKs — el schema **no** tiene
+`onDelete: Cascade` a propósito (ver `apps/api/src/demo/demo-purge.service.ts`):
+un `tenant.delete()` de un solo golpe es lo último que se quiere que sea
+posible sobre un tenant real.
+
 ## 3. Concurrencia multi-caja (mismo local, mismo stock)
 
 Dos+ cajas vendiendo el mismo producto en simultáneo es el caso de riesgo

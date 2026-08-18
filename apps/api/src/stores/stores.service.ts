@@ -2,15 +2,21 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { withTenantContext } from '@pos/database';
 import type { CreateStoreDto } from './dto/create-store.dto';
 import type { UpdateStoreDto } from './dto/update-store.dto';
+import { PlanService } from '../billing/plan.service';
 
 @Injectable()
 export class StoresService {
+  constructor(private readonly planService: PlanService) {}
+
   create(tenantId: string, dto: CreateStoreDto) {
-    return withTenantContext(tenantId, (tx) =>
-      tx.store.create({
+    return withTenantContext(tenantId, async (tx) => {
+      // assertQuota cuenta DENTRO de esta misma transacción, antes del
+      // insert — ver el comentario en PlanService.assertQuota.
+      await this.planService.assertQuota(tx, tenantId, 'stores', 1);
+      return tx.store.create({
         data: { tenantId, name: dto.name, address: dto.address },
-      }),
-    );
+      });
+    });
   }
 
   findAll(tenantId: string) {

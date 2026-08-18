@@ -70,6 +70,20 @@ export class SubscriptionEnforcementInterceptor implements NestInterceptor {
     );
     if (!tenant) return next.handle();
 
+    // Un tenant demo vencido se corta acá, sin depender de que el job diario
+    // de purga (DemoCleanupQueue) haya corrido — la corrección de la
+    // expiración no puede depender de un cron. La purga física es aparte y
+    // solo libera espacio; esto es lo que garantiza el límite de 7 días.
+    if (
+      tenant.planTier === 'demo' &&
+      tenant.demoExpiresAt &&
+      tenant.demoExpiresAt.getTime() < Date.now()
+    ) {
+      throw new ForbiddenException(
+        'Esta demo venció. Registrá tu comercio para seguir usando el sistema.',
+      );
+    }
+
     const snapshot = this.subscriptionService.snapshotOf(tenant);
 
     // Con WARN_ONLY (el default y la política comercial elegida) ambos flags

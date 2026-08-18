@@ -20,9 +20,7 @@ export function NavSidebar({ user }: { user: AuthUser }) {
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {items.map((item) => {
-          // "/" solo activo en la ruta exacta — si no, queda marcado en
-          // cualquier página (todo pathname empieza con "/").
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const active = pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}

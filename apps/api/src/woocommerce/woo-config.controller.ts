@@ -18,20 +18,25 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { requireTenant } from '../common/require-tenant';
 import type { AuthUser } from '../common/types/auth-user';
+import { Premium } from '../billing/premium.decorator';
 
 @Controller('woocommerce-config')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class WooConfigController {
   constructor(private readonly wooConfigService: WooConfigService) {}
 
+  // La creación del config es el gate real: sin config, WooStockSyncService/
+  // WooPriceSyncService ya se auto-desactivan (ver ecommerce-sync.service.ts).
   @Post()
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('WOO_SYNC')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateWooConfigDto) {
     return this.wooConfigService.create(requireTenant(user), dto);
   }
 
   @Patch(':id')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('WOO_SYNC')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

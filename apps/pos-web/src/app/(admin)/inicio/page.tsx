@@ -90,9 +90,12 @@ export default function Home() {
         </Link>
       </div>
 
-      <nav className="grid grid-cols-4 gap-3 text-sm">
+      <nav className="grid grid-cols-5 gap-3 text-sm">
         <Link href="/sales" className="rounded border border-border bg-surface p-3 text-center hover:border-accent">
           Ventas
+        </Link>
+        <Link href="/quotes" className="rounded border border-border bg-surface p-3 text-center hover:border-accent">
+          Presupuestos
         </Link>
         <Link href="/catalog" className="rounded border border-border bg-surface p-3 text-center hover:border-accent">
           Catálogo

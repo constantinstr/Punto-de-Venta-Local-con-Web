@@ -3,6 +3,7 @@
 import { useAuthStore } from "@/lib/auth-store";
 import { NavSidebar } from "./NavSidebar";
 import { SubscriptionBanner } from "./SubscriptionBanner";
+import { DemoBanner } from "./DemoBanner";
 
 // No usa useRequireAuth: cada página adentro ya hace su propio chequeo (lo
 // necesita igual para leer `user.role` y decidir qué mostrar) — si acá
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           para no empujar el sidebar: aparece y desaparece según el estado de
           la suscripción, y no debería mover la navegación al hacerlo. */}
       <div className="flex flex-1 flex-col overflow-hidden">
+        <DemoBanner />
         <SubscriptionBanner />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>

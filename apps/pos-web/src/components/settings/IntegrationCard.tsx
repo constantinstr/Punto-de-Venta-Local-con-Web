@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PremiumBadge } from "@/components/common/PremiumBadge";
 
 export type IntegrationState = "active" | "inactive" | "unconfigured";
 
@@ -29,6 +30,7 @@ export function IntegrationCard({
   onToggle,
   toggleDisabled,
   toggleHint,
+  premiumLocked,
 }: {
   name: string;
   description: string;
@@ -37,8 +39,17 @@ export function IntegrationCard({
   onToggle?: (next: boolean) => void;
   toggleDisabled?: boolean;
   toggleHint?: string;
+  // Cuando está seteado, fuerza toggleDisabled (aunque no venga toggleHint
+  // propio) y muestra el cartel Premium — reusa el mismo affordance de
+  // "interruptor deshabilitado con explicación" que ya tenía este
+  // componente, en vez de agregar un layout aparte para el caso demo.
+  premiumLocked?: boolean;
 }) {
   const isOn = state === "active";
+  const disabled = premiumLocked || toggleDisabled;
+  const hint = premiumLocked
+    ? "Disponible en el plan pago"
+    : toggleHint;
 
   return (
     <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-surface p-4">
@@ -50,6 +61,7 @@ export function IntegrationCard({
           <span className={`rounded px-2 py-0.5 text-xs ${STATE_STYLE[state]}`}>
             {STATE_LABEL[state]}
           </span>
+          {premiumLocked && <PremiumBadge />}
         </div>
         <p className="mt-1 text-sm text-muted">{description}</p>
         <Link href={href} className="mt-2 inline-block text-sm underline">
@@ -64,14 +76,14 @@ export function IntegrationCard({
             <input
               type="checkbox"
               checked={isOn}
-              disabled={toggleDisabled}
+              disabled={disabled}
               onChange={(e) => onToggle(e.target.checked)}
               className="h-4 w-4 disabled:opacity-40"
               aria-label={`Activar ${name}`}
             />
           </span>
-          {toggleDisabled && toggleHint && (
-            <span className="max-w-[11rem] text-right">{toggleHint}</span>
+          {disabled && hint && (
+            <span className="max-w-[11rem] text-right">{hint}</span>
           )}
         </label>
       )}

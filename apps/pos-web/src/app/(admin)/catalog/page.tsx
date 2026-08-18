@@ -4,7 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useCategories, useProducts, useStores, useLowStock } from "@/hooks/useCatalog";
+import { usePlan } from "@/hooks/usePlan";
 import { apiFileUrl } from "@/lib/api";
+import { PremiumBadge } from "@/components/common/PremiumBadge";
+import { UpgradeModal } from "@/components/common/UpgradeModal";
 
 const TYPE_LABELS: Record<string, string> = { SIMPLE: "Simple", VARIABLE: "Variable", BUNDLE: "Combo" };
 
@@ -15,6 +18,9 @@ export default function CatalogPage() {
   const [q, setQ] = useState("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [storeId, setStoreId] = useState("");
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const { isDemo, productsUsage, productsMax } = usePlan();
+  const atProductCap = isDemo && productsMax !== null && (productsUsage ?? 0) >= productsMax;
 
   const { data: categories } = useCategories();
   const { data: stores } = useStores();
@@ -31,16 +37,41 @@ export default function CatalogPage() {
   return (
     <div className="mx-auto max-w-5xl p-8 font-sans">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground  ">Catálogo</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-foreground  ">Catálogo</h1>
+          {isDemo && productsMax !== null && (
+            <span className="rounded bg-surface-muted px-2 py-0.5 text-xs text-muted">
+              {productsUsage ?? 0}/{productsMax} productos
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
           {(user.role === "OWNER" || user.role === "ADMIN") && (
             <Link href="/catalog/bulk" className="rounded border border-border px-4 py-2 text-sm">
               Importar / precios en lote
             </Link>
           )}
-          <Link href="/catalog/new" className="rounded bg-accent px-4 py-2 text-sm text-white  ">
-            + Nuevo producto
-          </Link>
+          {atProductCap ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowUpgrade(true)}
+                className="flex items-center gap-1.5 rounded bg-accent px-4 py-2 text-sm text-white opacity-60"
+              >
+                + Nuevo producto <PremiumBadge />
+              </button>
+              {showUpgrade && (
+                <UpgradeModal
+                  reason={`La demo permite hasta ${productsMax} productos. Registrá tu comercio para cargar el catálogo completo.`}
+                  onClose={() => setShowUpgrade(false)}
+                />
+              )}
+            </>
+          ) : (
+            <Link href="/catalog/new" className="rounded bg-accent px-4 py-2 text-sm text-white  ">
+              + Nuevo producto
+            </Link>
+          )}
         </div>
       </div>
 

@@ -13,7 +13,9 @@ import {
   useSyncTiendanubeCatalog,
   useRegisterTiendanubeWebhooks,
 } from "@/hooks/useTiendanube";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
+import { PremiumLockedNotice } from "@/components/common/PremiumLockedNotice";
 
 // El callback de OAuth vuelve al front con uno de estos en el query string —
 // se traducen acá para no mostrarle un código al comerciante.
@@ -46,6 +48,8 @@ function TiendanubeSettings() {
   const searchParams = useSearchParams();
   const [storeId, setStoreId] = useState("");
   const { data: config, isLoading } = useTiendanubeConfig(storeId || undefined);
+  const { can } = usePlan();
+  const locked = !can("TIENDANUBE_SYNC");
 
   const callbackError = searchParams.get("error");
   const justConnected = searchParams.get("conectado") === "1";
@@ -63,6 +67,14 @@ function TiendanubeSettings() {
           tienda, entre este local y tu Tienda Nube.
         </p>
       </div>
+
+      {locked && (
+        <PremiumLockedNotice>
+          La sincronización con Tienda Nube es parte del plan pago. Podés ver
+          cómo se conecta, pero completar la autorización está deshabilitado
+          en la demo.
+        </PremiumLockedNotice>
+      )}
 
       {callbackError && (
         <p className="rounded border border-danger bg-danger-muted px-4 py-3 text-sm text-danger">
@@ -96,13 +108,15 @@ function TiendanubeSettings() {
         </p>
       )}
       {storeId && isLoading && <p className="text-sm text-muted">Cargando…</p>}
-      {storeId && !isLoading && !config && <NotConnected storeId={storeId} />}
+      {storeId && !isLoading && !config && (
+        <NotConnected storeId={storeId} locked={locked} />
+      )}
       {storeId && config && <Connected storeId={storeId} config={config} />}
     </div>
   );
 }
 
-function NotConnected({ storeId }: { storeId: string }) {
+function NotConnected({ storeId, locked }: { storeId: string; locked: boolean }) {
   const authorize = useTiendanubeAuthorizeUrl();
   const [error, setError] = useState<string | null>(null);
 
@@ -142,7 +156,7 @@ function NotConnected({ storeId }: { storeId: string }) {
       <button
         type="button"
         onClick={handleConnect}
-        disabled={authorize.isPending}
+        disabled={authorize.isPending || locked}
         className="rounded bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
       >
         {authorize.isPending ? "Abriendo…" : "Conectar con Tienda Nube"}

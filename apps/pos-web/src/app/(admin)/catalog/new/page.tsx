@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { ProductType, VatCondition, CreateVariantInput, CreateBundleItemInput, StockEntryInput } from "@pos/shared-types";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useCategories, useCreateProduct, useProducts, useStores } from "@/hooks/useCatalog";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
+import { PremiumBadge } from "@/components/common/PremiumBadge";
 
 const VAT_OPTIONS: { value: VatCondition; label: string }[] = [
   { value: "IVA_21", label: "IVA 21%" },
@@ -22,6 +25,7 @@ export default function NewProductPage() {
   const { data: stores } = useStores();
   const { data: allProducts } = useProducts({});
   const createProduct = useCreateProduct();
+  const { isDemo, productsUsage, productsMax } = usePlan();
 
   const [type, setType] = useState<ProductType>("SIMPLE");
   const [sku, setSku] = useState("");
@@ -37,6 +41,35 @@ export default function NewProductPage() {
   const [error, setError] = useState<string | null>(null);
 
   if (!user) return null;
+
+  // El chequeo real está en el servidor (ProductsService.create ya rechaza
+  // el 403 con este mismo mensaje) — esto solo evita cargar un formulario
+  // entero para que el visitante se entere del tope recién al enviarlo.
+  const atProductCap =
+    isDemo && productsMax !== null && (productsUsage ?? allProducts?.length ?? 0) >= productsMax;
+
+  if (atProductCap) {
+    return (
+      <div className="mx-auto max-w-md space-y-4 p-8 text-center font-sans">
+        <div className="flex items-center justify-center gap-2">
+          <h1 className="text-xl font-semibold text-foreground">Tope de productos alcanzado</h1>
+          <PremiumBadge />
+        </div>
+        <p className="text-sm text-muted">
+          La demo permite hasta {productsMax} productos ({productsUsage}/{productsMax} cargados).
+          Registrá tu comercio para cargar el catálogo completo.
+        </p>
+        <div className="flex justify-center gap-2 pt-2">
+          <Link href="/catalog" className="rounded border border-border px-4 py-2 text-sm">
+            Volver al catálogo
+          </Link>
+          <Link href="/register" className="rounded bg-accent px-4 py-2 text-sm text-accent-foreground">
+            Registrar mi comercio
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const componentCandidates = (allProducts ?? []).filter((p) => p.type !== "BUNDLE");
 

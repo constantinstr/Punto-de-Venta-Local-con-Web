@@ -8,9 +8,11 @@ import { sumPayments, remainingToPay, computeChange, validatePayments, type Paym
 import { useCreateOrder } from "@/hooks/useOrders";
 import { useFiscalConfig } from "@/hooks/useFiscalConfig";
 import { useIssueInvoice } from "@/hooks/useInvoices";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
 import { ThermalReceipt, type ReceiptPaperSize } from "./ThermalReceipt";
 import { CustomerPicker } from "./CustomerPicker";
+import { PremiumBadge } from "@/components/common/PremiumBadge";
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Efectivo",
@@ -49,6 +51,8 @@ export function CheckoutModal({
   const createOrder = useCreateOrder();
   const issueInvoice = useIssueInvoice();
   const { data: fiscalConfig } = useFiscalConfig(storeId);
+  const { can } = usePlan();
+  const fiscalLocked = !can("FISCAL_INVOICING");
 
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: "CASH", amount: totals.total }]);
   const [fiscalType, setFiscalType] = useState<RequestedInvoiceType>("TICKET_X");
@@ -77,8 +81,8 @@ export function CheckoutModal({
   // controla vía los radios de abajo.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!fiscalConfig && fiscalType !== "TICKET_X") setFiscalType("TICKET_X");
-  }, [fiscalConfig, fiscalType]);
+    if ((!fiscalConfig || fiscalLocked) && fiscalType !== "TICKET_X") setFiscalType("TICKET_X");
+  }, [fiscalConfig, fiscalLocked, fiscalType]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -350,7 +354,7 @@ export function CheckoutModal({
           <p className="text-sm text-muted">Comprobante</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {(Object.keys(FISCAL_OPTION_LABELS) as RequestedInvoiceType[]).map((option) => {
-              const disabled = option !== "TICKET_X" && !fiscalConfig;
+              const disabled = option !== "TICKET_X" && (!fiscalConfig || fiscalLocked);
               return (
                 <label key={option} className={disabled ? "flex items-center gap-1 opacity-40" : "flex items-center gap-1"}>
                   <input
@@ -361,14 +365,21 @@ export function CheckoutModal({
                     onChange={() => setFiscalType(option)}
                   />
                   {FISCAL_OPTION_LABELS[option]}
+                  {fiscalLocked && option !== "TICKET_X" && <PremiumBadge />}
                 </label>
               );
             })}
           </div>
-          {!fiscalConfig && (
+          {fiscalLocked ? (
             <p className="text-xs text-muted">
-              Este local no tiene configuración fiscal cargada — solo se puede emitir Ticket.
+              La facturación AFIP es parte del plan pago — en la demo solo se puede emitir Ticket.
             </p>
+          ) : (
+            !fiscalConfig && (
+              <p className="text-xs text-muted">
+                Este local no tiene configuración fiscal cargada — solo se puede emitir Ticket.
+              </p>
+            )
           )}
         </div>
 

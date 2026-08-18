@@ -15,6 +15,7 @@ import {
   IntegrationCard,
   type IntegrationState,
 } from "@/components/settings/IntegrationCard";
+import { usePlan } from "@/hooks/usePlan";
 
 interface SettingsLink {
   href: string;
@@ -88,6 +89,7 @@ export default function SettingsHubPage() {
   const updateWoo = useUpdateWooConfig(wooConfig?.id ?? "");
   const { data: tnConfig } = useTiendanubeConfig(storeId || undefined);
   const updateTn = useUpdateTiendanubeConfig(tnConfig?.id);
+  const { can } = usePlan();
 
   if (!user) return null;
 
@@ -140,6 +142,7 @@ export default function SettingsHubPage() {
               description="Emitir facturas con CAE y notas de crédito. Sin esto solo se emiten tickets internos."
               href="/settings/integrations/afip"
               state={fiscalState}
+              premiumLocked={!can("FISCAL_INVOICING")}
             />
 
             <IntegrationCard
@@ -154,6 +157,7 @@ export default function SettingsHubPage() {
               }
               toggleDisabled={!wooConfig}
               toggleHint="Configurala primero"
+              premiumLocked={!can("WOO_SYNC")}
             />
 
             <IntegrationCard
@@ -166,6 +170,7 @@ export default function SettingsHubPage() {
               }
               toggleDisabled={!tnConfig}
               toggleHint="Conectala primero"
+              premiumLocked={!can("TIENDANUBE_SYNC")}
             />
           </div>
         </section>

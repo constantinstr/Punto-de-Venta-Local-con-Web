@@ -12,6 +12,12 @@ const URGENT_STATES: EffectiveSubscriptionState[] = ["GRACE", "EXPIRED", "CANCEL
 export function SubscriptionBanner() {
   const { data } = useSubscription();
 
+  // Un tenant demo también tiene trialEndsAt seteado (para que el cálculo de
+  // días restantes salga gratis, ver DemoService.provision), así que sin
+  // este corte este banner y DemoBanner mostrarían el mismo aviso duplicado.
+  // DemoBanner es el que corresponde mostrar en su lugar.
+  if (data?.plan.isDemo) return null;
+
   // Sin datos (todavía cargando, o la consulta falló) no se muestra nada: el
   // banner nunca debe ser el motivo por el que alguien no puede trabajar.
   if (!data?.snapshot.shouldWarn || !data.snapshot.message) return null;

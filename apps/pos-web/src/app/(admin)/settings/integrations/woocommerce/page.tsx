@@ -12,7 +12,9 @@ import {
   useSyncLogs,
   useRetrySyncLog,
 } from "@/hooks/useWooCommerce";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
+import { PremiumLockedNotice } from "@/components/common/PremiumLockedNotice";
 import type { SyncLog, WooCommerceConfig } from "@pos/shared-types";
 
 const DIRECTION_LABELS: Record<string, string> = {
@@ -30,6 +32,8 @@ export default function WooCommerceSettingsPage() {
   const { data: stores } = useStores();
   const [storeId, setStoreId] = useState("");
   const { data: config, isLoading } = useWooCommerceConfig(storeId || undefined);
+  const { can } = usePlan();
+  const locked = !can("WOO_SYNC");
 
   if (!user) return null;
 
@@ -41,6 +45,14 @@ export default function WooCommerceSettingsPage() {
           Sincronización bidireccional de stock, y de precio hacia la tienda, entre este local y tu tienda WooCommerce.
         </p>
       </div>
+
+      {locked && (
+        <PremiumLockedNotice>
+          La sincronización con WooCommerce es parte del plan pago. Podés ver
+          cómo se configura, pero guardar credenciales está deshabilitado en
+          la demo.
+        </PremiumLockedNotice>
+      )}
 
       <select
         value={storeId}
@@ -58,7 +70,7 @@ export default function WooCommerceSettingsPage() {
       {!storeId && <p className="text-sm text-muted">Seleccioná el local que va a recibir el stock de la tienda online.</p>}
       {storeId && isLoading && <p className="text-sm text-muted">Cargando…</p>}
 
-      {storeId && !isLoading && !config && <CreateConfigForm storeId={storeId} />}
+      {storeId && !isLoading && !config && <CreateConfigForm storeId={storeId} locked={locked} />}
       {storeId && !isLoading && config && <ConfigPanel storeId={storeId} config={config} />}
 
       {storeId && config && <SyncLogPanel />}
@@ -66,7 +78,7 @@ export default function WooCommerceSettingsPage() {
   );
 }
 
-function CreateConfigForm({ storeId }: { storeId: string }) {
+function CreateConfigForm({ storeId, locked }: { storeId: string; locked: boolean }) {
   const create = useCreateWooConfig();
   const [apiUrl, setApiUrl] = useState("");
   const [consumerKey, setConsumerKey] = useState("");
@@ -133,7 +145,7 @@ function CreateConfigForm({ storeId }: { storeId: string }) {
       {error && <p className="text-red-600">{error}</p>}
       <button
         type="submit"
-        disabled={create.isPending}
+        disabled={create.isPending || locked}
         className="rounded bg-accent px-4 py-2 text-white disabled:opacity-50  "
       >
         Guardar integración

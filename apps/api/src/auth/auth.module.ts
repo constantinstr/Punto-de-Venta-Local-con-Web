@@ -23,5 +23,8 @@ import { BillingModule } from '../billing/billing.module';
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
+  // AuthService se reexporta para DemoModule: la provisión de un tenant demo
+  // reusa registerTenant/generateTokens en vez de duplicar el baile de RLS.
+  exports: [AuthService],
 })
 export class AuthModule {}

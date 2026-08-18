@@ -170,10 +170,20 @@ model Tenant {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  // "standard" | "demo". Arrancó sin usarse (campo muerto desde el init) y
+  // ahora distingue un tenant real de un sandbox efímero — ver DemoModule.
   planTier  String   @default("standard")
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Solo para planTier="demo": cuándo se borra el sandbox (job de limpieza,
+  // ver DemoCleanupQueue). null en tenants reales. Deliberadamente separado
+  // de trialEndsAt: ese es un dato COMERCIAL que /platform puede editar y que
+  // graceDays extiende; este es un dato de CICLO DE VIDA que solo el job de
+  // purga lee. Mezclarlos dejaría que extender el trial de alguien programe
+  // sin querer el borrado de sus datos, o viceversa.
+  demoExpiresAt DateTime?
 
   // ── Suscripción / licencia ──────────────────────────────────────────────
   // subscriptionStatus refleja lo que dice Mercado Pago (la fuente
@@ -219,6 +229,8 @@ model Tenant {
   suppliers          Supplier[]
   purchases          Purchase[]
   purchaseItems      PurchaseItem[]
+
+  @@index([planTier, demoExpiresAt])
 }
 
 model User {

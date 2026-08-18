@@ -5,6 +5,7 @@ import { withTenantContext, VatCondition } from '@pos/database';
 import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
 import { AuditService } from '../audit/audit.service';
 import { BundlePricingService } from './bundle-pricing.service';
+import { PlanService } from '../billing/plan.service';
 import type { AuthUser } from '../common/types/auth-user';
 
 // v1: solo productos SIMPLE, clave SKU (update si existe, create si no).
@@ -41,6 +42,7 @@ export class ProductsImportService {
     private readonly ecommerceSync: EcommerceSyncService,
     private readonly auditService: AuditService,
     private readonly bundlePricing: BundlePricingService,
+    private readonly planService: PlanService,
   ) {}
 
   async buildTemplate(): Promise<Buffer> {
@@ -121,6 +123,14 @@ export class ProductsImportService {
   }> {
     const parsed = await this.parseFile(file);
     const results = await this.classifyRows(tenantId, parsed);
+
+    // Se rechaza el archivo ENTERO antes de escribir nada si se pasaría del
+    // tope de demo — una importación parcial (algunas filas sí, otras no)
+    // es peor que un rechazo limpio con un mensaje claro. Las filas
+    // action:'update' no suman: actualizan un SKU que ya existe, no crean uno.
+    const newProductCount = results.filter((r) => r.action === 'create').length;
+    await this.planService.assertImportQuota(tenantId, newProductCount);
+
     const validRowNumbers = new Set(
       results.filter((r) => r.action !== 'error').map((r) => r.row),
     );

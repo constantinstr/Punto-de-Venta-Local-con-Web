@@ -53,6 +53,16 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
+// Respuesta de POST /demo/start. `credentials` viaja en claro (sin mailer en
+// el repo) para que el visitante pueda volver a entrar desde otro dispositivo
+// dentro de los 7 días del sandbox — el frontend la muestra una sola vez.
+export interface DemoStartResponse {
+  user: AuthUser;
+  tokens: AuthTokens;
+  credentials: { email: string; password: string };
+  demoExpiresAt: string;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // CATÁLOGO (Sprint 2)
 // ──────────────────────────────────────────────────────────────────────────
@@ -994,6 +1004,27 @@ export interface SubscriptionSnapshot {
   blocksAccess: boolean;
 }
 
+// "standard" = comercio real. "demo" = sandbox efímero autoprovisionado desde
+// la landing pública, ver POST /demo/start. Solo "demo" trae `usage` no-nulo.
+export type PlanTier = "standard" | "demo";
+
+// Las tres funciones que un tenant demo tiene bloqueadas por cartel Premium.
+// El servidor es la frontera real (PlanFeatureInterceptor + chequeos puntuales
+// en InvoicesService/EcommerceSyncService) — esto solo transporta el estado
+// para que la UI dibuje el candado; nunca es la fuente de verdad.
+export type PremiumFeature = "FISCAL_INVOICING" | "WOO_SYNC" | "TIENDANUBE_SYNC";
+
+export interface PlanState {
+  tier: PlanTier;
+  isDemo: boolean;
+  demoExpiresAt: string | null;
+  demoDaysRemaining: number | null;
+  features: Record<PremiumFeature, boolean>;
+  limits: { maxProducts: number | null; maxStores: number | null };
+  /** null cuando no es demo — evita pagar el costo de contar filas de un tenant real. */
+  usage: { products: number; stores: number } | null;
+}
+
 export interface TenantSubscription {
   tenantId: string;
   tenantName: string;
@@ -1005,6 +1036,7 @@ export interface TenantSubscription {
   enforcementPolicy: EnforcementPolicy;
   hasMercadoPagoSubscription: boolean;
   snapshot: SubscriptionSnapshot;
+  plan: PlanState;
 }
 
 export interface SubscriptionEvent {

@@ -18,14 +18,19 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { requireTenant } from '../common/require-tenant';
 import type { AuthUser } from '../common/types/auth-user';
+import { Premium } from '../billing/premium.decorator';
 
 @Controller('fiscal-config')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FiscalConfigController {
   constructor(private readonly fiscalConfigService: FiscalConfigService) {}
 
+  // @Premium solo en los handlers de escritura: un tenant demo puede seguir
+  // viendo si el local tiene configuración fiscal (GET), pero no cargar
+  // certificados AFIP propios — eso es lo que compra el plan pago.
   @Post()
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('FISCAL_INVOICING')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateFiscalConfigDto) {
     return this.fiscalConfigService.create(requireTenant(user), dto);
   }
@@ -40,6 +45,7 @@ export class FiscalConfigController {
 
   @Patch(':id')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('FISCAL_INVOICING')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

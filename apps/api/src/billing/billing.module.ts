@@ -4,12 +4,16 @@ import { PlatformController } from './platform.controller';
 import { MpWebhookController } from './mp-webhook.controller';
 import { SubscriptionService } from './subscription.service';
 import { MercadoPagoService } from './mercadopago.service';
+import { PlanService } from './plan.service';
 
 @Module({
   controllers: [BillingController, PlatformController, MpWebhookController],
-  providers: [SubscriptionService, MercadoPagoService],
+  providers: [SubscriptionService, MercadoPagoService, PlanService],
   // SubscriptionService se exporta porque lo consumen AuthService (para
   // setear el trial al dar de alta) y el SubscriptionGuard global.
-  exports: [SubscriptionService],
+  // PlanService se exporta porque lo consumen InvoicesService,
+  // EcommerceSyncService, ProductsService, StoresService y
+  // PlanFeatureInterceptor (registrado global en AppModule).
+  exports: [SubscriptionService, PlanService],
 })
 export class BillingModule {}

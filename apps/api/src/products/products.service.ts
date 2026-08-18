@@ -13,6 +13,7 @@ import {
 } from '@pos/database';
 import { getAvailableStock } from '../stock/stock-calculation';
 import { EcommerceSyncService } from '../integrations/ecommerce-sync.service';
+import { PlanService } from '../billing/plan.service';
 import {
   BundlePricingService,
   type RecalculatedBundle,
@@ -36,12 +37,20 @@ export class ProductsService {
   constructor(
     private readonly ecommerceSync: EcommerceSyncService,
     private readonly bundlePricing: BundlePricingService,
+    private readonly planService: PlanService,
   ) {}
 
   async create(tenantId: string, dto: CreateProductDto) {
     this.assertTypeShape(dto);
 
     return withTenantContext(tenantId, async (tx) => {
+      // Cuenta DENTRO de esta misma transacción, antes del insert — ver el
+      // comentario en PlanService.assertQuota. No aplica a las otras dos
+      // vías de creación (import masivo, precios en lote): el import tiene
+      // su propio chequeo antes de comprometer el batch entero, y el de
+      // precios en lote nunca crea productos, solo actualiza.
+      await this.planService.assertQuota(tx, tenantId, 'products', 1);
+
       if (dto.categoryId)
         await this.assertCategoryExists(tx, tenantId, dto.categoryId);
 

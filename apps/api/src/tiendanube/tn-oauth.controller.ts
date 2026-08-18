@@ -25,6 +25,7 @@ import {
 } from './tiendanube-gateway.interface';
 import { TnConfigService } from './tn-config.service';
 import { TnWebhookRegistrarService } from './tn-webhook-registrar.service';
+import { Premium } from '../billing/premium.decorator';
 
 interface OAuthState {
   tenantId: string;
@@ -63,9 +64,15 @@ export class TnOAuthController {
   // Devuelve la URL a la que hay que mandar al comerciante. No redirige desde
   // acá: el front necesita hacer la navegación de nivel superior, y además
   // así el endpoint sigue siendo una llamada autenticada normal.
+  //
+  // Este es el gate REAL de Tienda Nube: a diferencia de WooCommerce (que
+  // guarda credenciales manuales), acá no hay "crear config" — la única
+  // puerta de entrada es completar este OAuth. Bloquearlo acá es suficiente
+  // para que un tenant demo nunca llegue a tener una fila TiendanubeConfig.
   @Get('authorize-url')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('TIENDANUBE_SYNC')
   async getAuthorizeUrl(
     @CurrentUser() user: AuthUser,
     @Query('storeId') storeId: string,

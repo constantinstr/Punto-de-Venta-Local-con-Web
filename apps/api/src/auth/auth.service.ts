@@ -184,7 +184,10 @@ export class AuthService {
     });
   }
 
-  private async generateTokens(user: User): Promise<AuthTokens> {
+  // Público (no solo usado internamente): DemoService lo reusa para emitir
+  // tokens al provisionar un tenant demo, en vez de duplicar la firma JWT y
+  // la creación del RefreshToken.
+  async generateTokens(user: User): Promise<AuthTokens> {
     const payload = {
       sub: user.id,
       tenantId: user.tenantId,
@@ -233,7 +236,8 @@ function toSafeUser(user: User): SafeUser {
 
 // Genera un slug legible + sufijo aleatorio para evitar colisiones entre
 // tenants con nombres iguales o similares (el slug es único en el schema).
-function slugify(name: string): string {
+// Exportada: DemoService la reusa para nombrar tenants demo.
+export function slugify(name: string): string {
   const base = name
     .normalize('NFD')
     .replace(DIACRITICS_REGEX, '')

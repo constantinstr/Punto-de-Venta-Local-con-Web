@@ -20,6 +20,7 @@ import { TnConfigService } from './tn-config.service';
 import { TnCatalogSyncService } from './tn-catalog-sync.service';
 import { TnWebhookRegistrarService } from './tn-webhook-registrar.service';
 import { UpdateTnConfigDto } from './dto/update-tn-config.dto';
+import { Premium } from '../billing/premium.decorator';
 
 @Controller('tiendanube-config')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -41,8 +42,12 @@ export class TnConfigController {
     return this.tnConfigService.findByStore(requireTenant(user), storeId);
   }
 
+  // El gate real es getAuthorizeUrl en TnOAuthController — sin eso un tenant
+  // demo nunca completa el OAuth y nunca tiene una fila que actualizar acá.
+  // Se marcan igual, en defensa de profundidad.
   @Patch(':id')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('TIENDANUBE_SYNC')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -53,6 +58,7 @@ export class TnConfigController {
 
   @Post('test-connection')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('TIENDANUBE_SYNC')
   testConnection(
     @CurrentUser() user: AuthUser,
     @Body('storeId') storeId: string,
@@ -62,6 +68,7 @@ export class TnConfigController {
 
   @Post('sync-catalog')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('TIENDANUBE_SYNC')
   syncCatalog(@CurrentUser() user: AuthUser, @Body('storeId') storeId: string) {
     return this.catalogSync.syncCatalog(requireTenant(user), storeId);
   }
@@ -72,6 +79,7 @@ export class TnConfigController {
   // sin tener que desconectar y reconectar la tienda.
   @Post('register-webhooks')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @Premium('TIENDANUBE_SYNC')
   async registerWebhooks(
     @CurrentUser() user: AuthUser,
     @Body('storeId') storeId: string,

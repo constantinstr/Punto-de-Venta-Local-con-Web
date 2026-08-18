@@ -1,0 +1,349 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { App } from 'supertest/types';
+import { AppModule } from '../src/app.module';
+import { withPlatformContext, withTenantContext } from '@pos/database';
+import { DemoPurgeService } from '../src/demo/demo-purge.service';
+
+interface DemoStartBody {
+  user: { id: string; tenantId: string };
+  tokens: { accessToken: string };
+  credentials: { email: string; password: string };
+  demoExpiresAt: string;
+}
+interface IdResponseBody {
+  id: string;
+}
+interface BillingMeBody {
+  plan: {
+    tier: string;
+    isDemo: boolean;
+    limits: { maxProducts: number | null; maxStores: number | null };
+    usage: { products: number; stores: number } | null;
+    features: Record<string, boolean>;
+  };
+}
+interface ApiErrorBody {
+  message: string | string[];
+}
+
+// Corre contra la base de datos real local, igual que los demás e2e-spec de
+// este proyecto — no se limpia después de las pruebas que NO purgan (dev/CI
+// descartable, nunca prod). Las de purga sí se auto-limpian, porque son
+// justamente lo que prueban.
+describe('Demo (modo de prueba público) — e2e', () => {
+  let app: INestApplication<App>;
+  let purgeService: DemoPurgeService;
+
+  async function startDemo() {
+    const res = await request(app.getHttpServer())
+      .post('/demo/start')
+      .send({})
+      .expect(201);
+    const body = res.body as DemoStartBody;
+    return {
+      ...body,
+      auth: { Authorization: `Bearer ${body.tokens.accessToken}` },
+    };
+  }
+
+  async function openShift(auth: Record<string, string>) {
+    const storesRes = await request(app.getHttpServer())
+      .get('/stores')
+      .set(auth)
+      .expect(200);
+    const storeId = (storesRes.body as IdResponseBody[])[0].id;
+
+    const registersRes = await request(app.getHttpServer())
+      .get('/cash-registers')
+      .set(auth)
+      .expect(200);
+    const cashRegisterId = (registersRes.body as IdResponseBody[])[0].id;
+
+    const shiftRes = await request(app.getHttpServer())
+      .post('/cash-shifts/open')
+      .set(auth)
+      .send({ cashRegisterId, initialAmount: 1000 })
+      .expect(201);
+    return { storeId, cashShiftId: (shiftRes.body as IdResponseBody).id };
+  }
+
+  async function createOrder(
+    auth: Record<string, string>,
+    storeId: string,
+    cashShiftId: string,
+    productId: string,
+    price: number,
+  ) {
+    const res = await request(app.getHttpServer())
+      .post('/orders')
+      .set(auth)
+      .send({
+        storeId,
+        cashShiftId,
+        items: [{ productId, quantity: 1 }],
+        payments: [{ method: 'CASH', amount: price }],
+      })
+      .expect(201);
+    return (res.body as IdResponseBody).id;
+  }
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
+    await app.init();
+    purgeService = moduleFixture.get(DemoPurgeService);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('provisiona un tenant demo con catálogo de ejemplo y tokens usables', async () => {
+    const demo1 = await startDemo();
+    const demo2 = await startDemo();
+    expect(demo1.user.tenantId).not.toBe(demo2.user.tenantId);
+
+    const billing = await request(app.getHttpServer())
+      .get('/billing/me')
+      .set(demo1.auth)
+      .expect(200);
+    const plan = (billing.body as BillingMeBody).plan;
+    expect(plan.tier).toBe('demo');
+    expect(plan.isDemo).toBe(true);
+    expect(plan.limits).toEqual({ maxProducts: 20, maxStores: 1 });
+    expect(plan.usage).toEqual({ products: 9, stores: 1 });
+    expect(plan.features).toEqual({
+      FISCAL_INVOICING: false,
+      WOO_SYNC: false,
+      TIENDANUBE_SYNC: false,
+    });
+  });
+
+  it('la venta normal (Ticket X) funciona sin restricciones', async () => {
+    const demo = await startDemo();
+    const { storeId, cashShiftId } = await openShift(demo.auth);
+
+    const productsRes = await request(app.getHttpServer())
+      .get('/products')
+      .set(demo.auth)
+      .expect(200);
+    const product = (productsRes.body as { id: string; price: string }[])[0];
+
+    const orderId = await createOrder(
+      demo.auth,
+      storeId,
+      cashShiftId,
+      product.id,
+      Number(product.price),
+    );
+
+    // Sin requestedType -> Ticket X implícito, igual que en producción.
+    await request(app.getHttpServer())
+      .post('/invoices')
+      .set(demo.auth)
+      .send({ orderId })
+      .expect(201);
+  });
+
+  it('bloquea facturación fiscal, sync Woo/Tiendanube y un segundo local', async () => {
+    const demo = await startDemo();
+    const { storeId, cashShiftId } = await openShift(demo.auth);
+
+    const productsRes = await request(app.getHttpServer())
+      .get('/products')
+      .set(demo.auth)
+      .expect(200);
+    const product = (productsRes.body as { id: string; price: string }[])[0];
+    const orderId = await createOrder(
+      demo.auth,
+      storeId,
+      cashShiftId,
+      product.id,
+      Number(product.price),
+    );
+
+    const fiscalInvoice = await request(app.getHttpServer())
+      .post('/invoices')
+      .set(demo.auth)
+      .send({ orderId, requestedType: 'FACTURA_B' })
+      .expect(403);
+    expect((fiscalInvoice.body as ApiErrorBody).message).toContain('plan pago');
+
+    await request(app.getHttpServer())
+      .post('/fiscal-config')
+      .set(demo.auth)
+      .send({
+        storeId,
+        cuit: '20304050607',
+        taxCondition: 'RESPONSABLE_INSCRIPTO',
+        ptoVta: 1,
+        crtCertificate: 'x',
+        keyCertificate: 'x',
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post('/woocommerce-config')
+      .set(demo.auth)
+      .send({
+        storeId,
+        apiUrl: 'https://example.com',
+        consumerKey: 'ck',
+        consumerSecret: 'cs',
+        webhookSecret: 'webhook-secret',
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get('/integrations/tiendanube/authorize-url')
+      .query({ storeId })
+      .set(demo.auth)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post('/stores')
+      .set(demo.auth)
+      .send({ name: 'Sucursal 2' })
+      .expect(403);
+  });
+
+  it('permite crear productos hasta el tope de 20 y bloquea el 21°', async () => {
+    const demo = await startDemo();
+    const { storeId } = await openShift(demo.auth);
+
+    // Ya hay 9 sembrados; se crean 10 más para llegar a 19, después el
+    // vigésimo (total 20) debe pasar y el veintiuno debe fallar.
+    for (let i = 0; i < 10; i++) {
+      await request(app.getHttpServer())
+        .post('/products')
+        .set(demo.auth)
+        .send({
+          sku: `DEMO-CAP-${i}`,
+          name: `Producto ${i}`,
+          type: 'SIMPLE',
+          costPrice: 100,
+          price: 200,
+          vatCondition: 'IVA_21',
+          initialStock: [{ storeId, quantity: 1 }],
+        })
+        .expect(201);
+    }
+
+    // 9 sembrados + 10 = 19. El siguiente llega a 20 (permitido).
+    await request(app.getHttpServer())
+      .post('/products')
+      .set(demo.auth)
+      .send({
+        sku: 'DEMO-CAP-LAST',
+        name: 'Producto tope',
+        type: 'SIMPLE',
+        costPrice: 100,
+        price: 200,
+        vatCondition: 'IVA_21',
+      })
+      .expect(201);
+
+    const blocked = await request(app.getHttpServer())
+      .post('/products')
+      .set(demo.auth)
+      .send({
+        sku: 'DEMO-CAP-OVER',
+        name: 'Producto de más',
+        type: 'SIMPLE',
+        costPrice: 100,
+        price: 200,
+        vatCondition: 'IVA_21',
+      })
+      .expect(403);
+    expect((blocked.body as ApiErrorBody).message).toContain('20 productos');
+  });
+
+  it('un tenant demo vencido queda bloqueado sin depender del job de limpieza', async () => {
+    const demo = await startDemo();
+
+    // Simula el paso del tiempo directamente en la base, sin esperar al job.
+    await withPlatformContext((tx) =>
+      tx.tenant.update({
+        where: { id: demo.user.tenantId },
+        data: { demoExpiresAt: new Date(Date.now() - 1000) },
+      }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/products')
+      .set(demo.auth)
+      .expect(403);
+    expect((res.body as ApiErrorBody).message).toContain('venció');
+  });
+
+  it('purgeTenant borra un tenant demo completo sin violar FKs', async () => {
+    const demo = await startDemo();
+    const { storeId, cashShiftId } = await openShift(demo.auth);
+    const productsRes = await request(app.getHttpServer())
+      .get('/products')
+      .set(demo.auth)
+      .expect(200);
+    const product = (productsRes.body as { id: string; price: string }[])[0];
+    const orderId = await createOrder(
+      demo.auth,
+      storeId,
+      cashShiftId,
+      product.id,
+      Number(product.price),
+    );
+    await request(app.getHttpServer())
+      .post('/invoices')
+      .set(demo.auth)
+      .send({ orderId })
+      .expect(201);
+
+    await purgeService.purgeTenant(demo.user.tenantId);
+
+    const gone = await withPlatformContext((tx) =>
+      tx.tenant.findUnique({ where: { id: demo.user.tenantId } }),
+    );
+    expect(gone).toBeNull();
+
+    // withTenantContext sobre un tenant que ya no existe simplemente no
+    // encuentra filas (RLS filtra por un tenant_id que no matchea nada) —
+    // confirma que no quedó ni un Order/Product colgado.
+    const leftovers = await withTenantContext(demo.user.tenantId, (tx) =>
+      tx.order.count({ where: { tenantId: demo.user.tenantId } }),
+    );
+    expect(leftovers).toBe(0);
+  });
+
+  it('purgeTenant se niega a borrar un tenant que no es demo', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/register-tenant')
+      .send({
+        tenantName: `No Demo ${Date.now()}`,
+        storeName: 'Local Test',
+        ownerFullName: 'Owner Test',
+        ownerEmail: `no-demo-${Date.now()}@test.com`,
+        ownerPassword: 'password123',
+      })
+      .expect(201);
+    const tenantId = (res.body as DemoStartBody).user.tenantId;
+
+    await expect(purgeService.purgeTenant(tenantId)).rejects.toThrow(
+      'NO demo',
+    );
+
+    const stillThere = await withPlatformContext((tx) =>
+      tx.tenant.findUnique({ where: { id: tenantId } }),
+    );
+    expect(stillThere).not.toBeNull();
+  });
+});

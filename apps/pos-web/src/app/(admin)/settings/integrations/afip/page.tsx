@@ -10,7 +10,9 @@ import {
   useCreateFiscalConfig,
   useUpdateFiscalConfig,
 } from "@/hooks/useFiscalConfigAdmin";
+import { usePlan } from "@/hooks/usePlan";
 import { ApiError } from "@/lib/api";
+import { PremiumLockedNotice } from "@/components/common/PremiumLockedNotice";
 
 const TAX_CONDITIONS: { value: FiscalTaxCondition; label: string }[] = [
   { value: "MONOTRIBUTO", label: "Monotributo" },
@@ -37,6 +39,8 @@ export default function AfipSettingsPage() {
   const { data: config, isLoading } = useFiscalConfig(storeId || undefined);
   const createConfig = useCreateFiscalConfig();
   const updateConfig = useUpdateFiscalConfig();
+  const { can } = usePlan();
+  const locked = !can("FISCAL_INVOICING");
 
   const [cuit, setCuit] = useState("");
   const [taxCondition, setTaxCondition] = useState<FiscalTaxCondition>("MONOTRIBUTO");
@@ -139,6 +143,14 @@ export default function AfipSettingsPage() {
         La configuración es <strong>por local</strong>: cada uno factura con su
         propio punto de venta.
       </p>
+
+      {locked && (
+        <PremiumLockedNotice>
+          La facturación electrónica AFIP es parte del plan pago. Podés ver cómo
+          se configura, pero guardar certificados y emitir Factura A/B/C está
+          deshabilitado en la demo.
+        </PremiumLockedNotice>
+      )}
 
       <select
         value={storeId}
@@ -330,7 +342,7 @@ export default function AfipSettingsPage() {
 
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || locked}
               className="rounded bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
             >
               {pending
