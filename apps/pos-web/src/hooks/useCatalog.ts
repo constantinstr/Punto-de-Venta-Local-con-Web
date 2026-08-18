@@ -72,6 +72,14 @@ export function useUpdateStore() {
   });
 }
 
+export function useUploadStoreLogo(storeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => apiPostFile<Store>(`/stores/${storeId}/logo`, file),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["stores"] }),
+  });
+}
+
 type ProductFilters = Partial<Record<"categoryId" | "type" | "q", string>>;
 
 function buildQuery<T extends Record<string, string | undefined>>(params: T): string {

@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import type { PaymentMethod } from "@pos/shared-types";
+import type { Customer, CustomerDocType, CustomerTaxCondition, PaymentMethod } from "@pos/shared-types";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
   useCustomer,
@@ -30,6 +30,24 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   MERCADO_PAGO: "Mercado Pago",
   CURRENT_ACCOUNT: "Cuenta corriente",
 };
+
+const DOC_TYPE_LABELS: Record<CustomerDocType, string> = {
+  CUIT: "CUIT",
+  DNI: "DNI",
+  PASAPORTE: "Pasaporte",
+  FINAL_CONSUMER: "Sin documento",
+};
+
+const TAX_CONDITION_LABELS: Record<CustomerTaxCondition, string> = {
+  CONSUMIDOR_FINAL: "Consumidor Final",
+  RESPONSABLE_INSCRIPTO: "Responsable Inscripto",
+  MONOTRIBUTO: "Monotributo",
+  EXENTO: "Exento",
+};
+
+function whatsappLink(whatsapp: string): string {
+  return `https://wa.me/${whatsapp.replace(/\D/g, "")}`;
+}
 
 export default function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -128,32 +146,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         <Link href="/customers" className="text-sm text-muted underline">
           ← Clientes
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">{customer.name}</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+          {customer.name} {customer.lastName ?? ""}
+          {!customer.isActive && <span className="ml-2 text-sm font-normal text-muted">(inactivo)</span>}
+        </h1>
         {customer.businessName && customer.businessName !== customer.name && (
           <p className="text-sm text-muted">{customer.businessName}</p>
         )}
       </div>
 
-      <section className="rounded-lg border border-border bg-surface p-4 text-sm">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-xs text-muted">Documento</p>
-            <p>{customer.docNumber ? `${customer.docType} ${customer.docNumber}` : "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted">Condición IVA</p>
-            <p>{customer.taxCondition}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted">Email</p>
-            <p>{customer.email ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted">Teléfono</p>
-            <p>{customer.phone ?? "—"}</p>
-          </div>
-        </div>
-      </section>
+      <CustomerProfileSection customer={customer} canManage={canManage} />
 
       <section className="rounded-lg border border-border bg-surface p-4 text-sm">
         <div className="flex items-center justify-between">
@@ -377,5 +379,339 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         )}
       </section>
     </div>
+  );
+}
+
+function CustomerProfileSection({
+  customer,
+  canManage,
+}: {
+  customer: Customer;
+  canManage: boolean;
+}) {
+  const updateCustomer = useUpdateCustomer();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(customer.name);
+  const [lastName, setLastName] = useState(customer.lastName ?? "");
+  const [docType, setDocType] = useState<CustomerDocType>(customer.docType);
+  const [docNumber, setDocNumber] = useState(customer.docNumber ?? "");
+  const [businessName, setBusinessName] = useState(customer.businessName ?? "");
+  const [taxCondition, setTaxCondition] = useState<CustomerTaxCondition>(customer.taxCondition);
+  const [email, setEmail] = useState(customer.email ?? "");
+  const [phone, setPhone] = useState(customer.phone ?? "");
+  const [whatsapp, setWhatsapp] = useState(customer.whatsapp ?? "");
+  const [address, setAddress] = useState(customer.address ?? "");
+  const [city, setCity] = useState(customer.city ?? "");
+  const [province, setProvince] = useState(customer.province ?? "");
+  const [postalCode, setPostalCode] = useState(customer.postalCode ?? "");
+  const [country, setCountry] = useState(customer.country ?? "");
+  const [notes, setNotes] = useState(customer.notes ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  function resetToCustomer() {
+    setName(customer.name);
+    setLastName(customer.lastName ?? "");
+    setDocType(customer.docType);
+    setDocNumber(customer.docNumber ?? "");
+    setBusinessName(customer.businessName ?? "");
+    setTaxCondition(customer.taxCondition);
+    setEmail(customer.email ?? "");
+    setPhone(customer.phone ?? "");
+    setWhatsapp(customer.whatsapp ?? "");
+    setAddress(customer.address ?? "");
+    setCity(customer.city ?? "");
+    setProvince(customer.province ?? "");
+    setPostalCode(customer.postalCode ?? "");
+    setCountry(customer.country ?? "");
+    setNotes(customer.notes ?? "");
+  }
+
+  async function handleSave() {
+    setError(null);
+    if (!name.trim()) {
+      setError("El nombre es obligatorio");
+      return;
+    }
+    try {
+      await updateCustomer.mutateAsync({
+        id: customer.id,
+        input: {
+          name: name.trim(),
+          lastName: lastName.trim() || undefined,
+          docType,
+          docNumber: docNumber.trim() || undefined,
+          businessName: businessName.trim() || undefined,
+          taxCondition,
+          email: email.trim() || undefined,
+          phone: phone.trim() || undefined,
+          whatsapp: whatsapp.trim() || undefined,
+          address: address.trim() || undefined,
+          city: city.trim() || undefined,
+          province: province.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          country: country.trim() || undefined,
+          notes: notes.trim() || undefined,
+        },
+      });
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo guardar");
+    }
+  }
+
+  const isCompany = customer.taxCondition !== "CONSUMIDOR_FINAL";
+
+  if (!editing) {
+    return (
+      <section className="space-y-4 rounded-lg border border-border bg-surface p-4 text-sm">
+        <div className="flex items-start justify-between">
+          <div className="grid flex-1 grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-muted">Documento</p>
+              <p>{customer.docNumber ? `${DOC_TYPE_LABELS[customer.docType]} ${customer.docNumber}` : "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Condición IVA</p>
+              <p>{TAX_CONDITION_LABELS[customer.taxCondition]}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Email</p>
+              <p>{customer.email ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Teléfono</p>
+              <p>{customer.phone ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">WhatsApp</p>
+              {customer.whatsapp ? (
+                <a
+                  href={whatsappLink(customer.whatsapp)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline"
+                >
+                  {customer.whatsapp}
+                </a>
+              ) : (
+                <p>—</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-muted">Domicilio</p>
+              <p>
+                {[customer.address, customer.city, customer.province, customer.postalCode, customer.country]
+                  .filter(Boolean)
+                  .join(", ") || "—"}
+              </p>
+            </div>
+          </div>
+          {canManage && (
+            <button onClick={() => setEditing(true)} className="text-sm underline">
+              Editar
+            </button>
+          )}
+        </div>
+        {isCompany && customer.businessName && (
+          <div>
+            <p className="text-xs text-muted">Razón social</p>
+            <p>{customer.businessName}</p>
+          </div>
+        )}
+        {customer.notes && (
+          <div>
+            <p className="text-xs text-muted">Notas</p>
+            <p className="whitespace-pre-wrap">{customer.notes}</p>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-4 rounded-lg border border-border bg-surface p-4 text-sm">
+      <div>
+        <h2 className="mb-2 font-medium text-foreground">Persona</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-muted">
+            Nombre
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-0.5 block w-40 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Apellido
+            <input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              className="mt-0.5 block w-40 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Tipo de documento
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value as CustomerDocType)}
+              className="mt-0.5 block rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            >
+              {(Object.keys(DOC_TYPE_LABELS) as CustomerDocType[]).map((t) => (
+                <option key={t} value={t}>
+                  {DOC_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-muted">
+            Número
+            <input
+              value={docNumber}
+              onChange={(e) => setDocNumber(e.target.value)}
+              className="mt-0.5 block w-32 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className={isCompany ? "rounded border border-accent/40 bg-accent/5 p-2" : ""}>
+        <h2 className="mb-2 font-medium text-foreground">Empresa</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-muted">
+            Condición IVA
+            <select
+              value={taxCondition}
+              onChange={(e) => setTaxCondition(e.target.value as CustomerTaxCondition)}
+              className="mt-0.5 block rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            >
+              {(Object.keys(TAX_CONDITION_LABELS) as CustomerTaxCondition[]).map((t) => (
+                <option key={t} value={t}>
+                  {TAX_CONDITION_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex-1 text-xs text-muted">
+            Razón social
+            <input
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              className="mt-0.5 block w-full rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-2 font-medium text-foreground">Contacto</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-muted">
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-0.5 block w-56 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Teléfono
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="mt-0.5 block w-36 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            WhatsApp
+            <input
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)}
+              placeholder="549..."
+              className="mt-0.5 block w-36 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-2 font-medium text-foreground">Domicilio</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex-1 text-xs text-muted">
+            Dirección
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="mt-0.5 block w-full rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Ciudad
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className="mt-0.5 block w-36 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Provincia
+            <input
+              value={province}
+              onChange={(e) => setProvince(e.target.value)}
+              className="mt-0.5 block w-36 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Código postal
+            <input
+              value={postalCode}
+              onChange={(e) => setPostalCode(e.target.value)}
+              className="mt-0.5 block w-24 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            País
+            <input
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              placeholder="Argentina"
+              className="mt-0.5 block w-32 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-2 font-medium text-foreground">Notas</h2>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          className="block w-full rounded border border-border bg-surface px-2 py-1.5 text-sm"
+        />
+      </div>
+
+      {error && <p className="text-sm text-danger">{error}</p>}
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => void handleSave()}
+          disabled={updateCustomer.isPending}
+          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground disabled:opacity-50"
+        >
+          Guardar
+        </button>
+        <button
+          onClick={() => {
+            resetToCustomer();
+            setError(null);
+            setEditing(false);
+          }}
+          className="px-2 text-sm underline"
+        >
+          Cancelar
+        </button>
+      </div>
+    </section>
   );
 }

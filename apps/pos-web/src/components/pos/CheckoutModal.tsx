@@ -6,6 +6,7 @@ import type { CartTotals } from "@/stores/cart-calculations";
 import type { OrderItemPayload } from "@/stores/cart-calculations";
 import { sumPayments, remainingToPay, computeChange, validatePayments, type PaymentLine } from "@/stores/payment-calculations";
 import { useCreateOrder } from "@/hooks/useOrders";
+import { useQuote } from "@/hooks/useQuotes";
 import { useFiscalConfig } from "@/hooks/useFiscalConfig";
 import { useIssueInvoice } from "@/hooks/useInvoices";
 import { usePlan } from "@/hooks/usePlan";
@@ -35,6 +36,7 @@ export function CheckoutModal({
   storeId,
   store,
   cashShiftId,
+  quoteId,
   isOnline,
   onNewSale,
   onClose,
@@ -44,6 +46,7 @@ export function CheckoutModal({
   storeId: string;
   store: Store;
   cashShiftId: string;
+  quoteId?: string;
   isOnline: boolean;
   onNewSale: () => void;
   onClose: () => void;
@@ -53,6 +56,9 @@ export function CheckoutModal({
   const { data: fiscalConfig } = useFiscalConfig(storeId);
   const { can } = usePlan();
   const fiscalLocked = !can("FISCAL_INVOICING");
+  // Si el carrito viene de "Convertir" un presupuesto, precargar su cliente
+  // — el cajero no debería tener que volver a buscarlo.
+  const { data: sourceQuote } = useQuote(quoteId);
 
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: "CASH", amount: totals.total }]);
   const [fiscalType, setFiscalType] = useState<RequestedInvoiceType>("TICKET_X");
@@ -72,6 +78,11 @@ export function CheckoutModal({
   useEffect(() => {
     confirmRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (sourceQuote?.customer && !selectedCustomer) setSelectedCustomer(sourceQuote.customer);
+  }, [sourceQuote, selectedCustomer]);
 
   // Si el local no tiene fiscal config cargada (o cambió de local), no hay
   // forma de emitir Factura A/B — se cae a Ticket para no dejar seleccionada
@@ -159,6 +170,7 @@ export function CheckoutModal({
         customerId,
         items: orderItemsPayload,
         payments: payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })),
+        quoteId,
       });
       setCompletedOrder(order);
       await issueForOrder(order.id, fiscalType, customerId);

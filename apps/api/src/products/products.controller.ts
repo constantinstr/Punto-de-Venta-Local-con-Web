@@ -1,4 +1,6 @@
-import { unlink } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   Body,
@@ -21,7 +23,12 @@ import { UserRole } from '@pos/database';
 import { ProductsService } from './products.service';
 import { ProductsImportService } from './products-import.service';
 import { ProductsBulkPriceService } from './products-bulk-price.service';
-import { productImageMulterOptions } from './product-image.storage';
+import {
+  productImageMulterOptions,
+  PRODUCT_IMAGES_DIR,
+  PRODUCT_IMAGE_MAX_DIMENSION,
+} from './product-image.storage';
+import { compressImage } from '../common/image-processing';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
@@ -181,19 +188,22 @@ export class ProductsController {
         'Archivo de imagen requerido (jpg/png/webp, máx 5MB)',
       );
     }
-    try {
-      return await this.productsService.updateImage(
-        requireTenant(user),
-        id,
-        `/uploads/products/${file.filename}`,
-      );
-    } catch (err) {
-      // El interceptor ya escribió el archivo en disco antes de que el
-      // handler corra (guards -> interceptor -> handler) — si el producto
-      // no existe/no es de este tenant, no dejamos el archivo huérfano.
-      await unlink(file.path).catch(() => undefined);
-      throw err;
-    }
+    const compressed = await compressImage(file.buffer, {
+      maxWidth: PRODUCT_IMAGE_MAX_DIMENSION,
+      maxHeight: PRODUCT_IMAGE_MAX_DIMENSION,
+    });
+    const filename = `${randomUUID()}.webp`;
+    // Se valida (y persiste la URL) ANTES de tocar el disco: si el producto
+    // no existe/no es de este tenant, el update tira NotFoundException y
+    // nunca se escribió nada — no hace falta limpiar ningún archivo huérfano.
+    const updated = await this.productsService.updateImage(
+      requireTenant(user),
+      id,
+      `/uploads/products/${filename}`,
+    );
+    await mkdir(PRODUCT_IMAGES_DIR, { recursive: true });
+    await writeFile(join(PRODUCT_IMAGES_DIR, filename), compressed);
+    return updated;
   }
 
   @Post(':id/variants')

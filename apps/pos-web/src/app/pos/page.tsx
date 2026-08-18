@@ -21,6 +21,7 @@ import { CartTable } from "@/components/pos/CartTable";
 import { CartSummary } from "@/components/pos/CartSummary";
 import { VariantSelectorModal } from "@/components/pos/VariantSelectorModal";
 import { CheckoutModal } from "@/components/pos/CheckoutModal";
+import { QuoteModal } from "@/components/pos/QuoteModal";
 import { OpenShiftModal } from "@/components/pos/OpenShiftModal";
 import { CashControlModal } from "@/components/pos/CashControlModal";
 import type { PosSearchResult } from "@pos/shared-types";
@@ -41,6 +42,7 @@ export default function PosPage() {
   const items = useCartStore((s) => s.items);
   const globalDiscount = useCartStore((s) => s.globalDiscount);
   const selectedLineId = useCartStore((s) => s.selectedLineId);
+  const quoteId = useCartStore((s) => s.quoteId);
   const addItem = useCartStore((s) => s.addItem);
   const incrementQuantity = useCartStore((s) => s.incrementQuantity);
   const setQuantity = useCartStore((s) => s.setQuantity);
@@ -54,6 +56,9 @@ export default function PosPage() {
   // El tope real lo aplica el backend; acá solo se avisa antes para no dejar
   // cargar un descuento que la venta va a rechazar al cobrar.
   const maxDiscountPercent = useMyDiscountLimit(user?.role);
+  // Presupuestos son venta consultiva, no del mostrador rápido — un CASHIER
+  // vende y cobra, pero no arma cotizaciones (ver @Roles en QuotesController).
+  const canQuote = user?.role !== "CASHIER";
 
   const cashRegisterId = useCashSessionStore((s) => s.cashRegisterId);
   const setCashRegisterId = useCashSessionStore((s) => s.setCashRegisterId);
@@ -65,6 +70,7 @@ export default function PosPage() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [variantModalProduct, setVariantModalProduct] = useState<CatalogProduct | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
   const [cashControlOpen, setCashControlOpen] = useState(false);
   const [discountEditorLineId, setDiscountEditorLineId] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
@@ -420,6 +426,8 @@ export default function PosPage() {
               onSetGlobalDiscount={setGlobalDiscount}
               onCheckout={() => setCheckoutOpen(true)}
               checkoutDisabled={!canOperate || items.length === 0 || hasStockIssues}
+              onQuote={canQuote ? () => setQuoteOpen(true) : undefined}
+              quoteDisabled={items.length === 0}
             />
           </section>
         </div>
@@ -440,6 +448,7 @@ export default function PosPage() {
           storeId={storeId}
           store={currentStore}
           cashShiftId={currentShift.id}
+          quoteId={quoteId ?? undefined}
           isOnline={online}
           onNewSale={() => {
             clearCart();
@@ -447,6 +456,15 @@ export default function PosPage() {
             searchInputRef.current?.focus();
           }}
           onClose={() => setCheckoutOpen(false)}
+        />
+      )}
+
+      {quoteOpen && storeId && (
+        <QuoteModal
+          totals={totals}
+          quoteItemsPayload={orderItemsPayload}
+          storeId={storeId}
+          onClose={() => setQuoteOpen(false)}
         />
       )}
 

@@ -4,14 +4,14 @@ import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/m
 
 // process.cwd() en runtime es /repo (WORKDIR del Dockerfile) — coincide con
 // el volumen montado en docker-compose.prod.yml (api_uploads:/repo/uploads)
-// para que las imágenes sobrevivan a un redeploy del contenedor.
-export const PRODUCT_IMAGES_DIR = join(process.cwd(), 'uploads', 'products');
-export const PRODUCT_IMAGE_MAX_DIMENSION = 800;
+// para que el logo sobreviva a un redeploy del contenedor.
+export const STORE_LOGOS_DIR = join(process.cwd(), 'uploads', 'stores');
+export const STORE_LOGO_MAX_DIMENSION = 600;
 
 // En memoria, no en disco: el archivo se comprime (ver image-processing.ts)
-// y recién se escribe una vez confirmado que el producto existe — así el
+// y recién se escribe una vez confirmado que el local existe — así el
 // controller no necesita limpiar un archivo huérfano si la validación falla.
-export const productImageMulterOptions: MulterOptions = {
+export const storeLogoMulterOptions: MulterOptions = {
   storage: memoryStorage(),
   // Validación liviana acá (mimetype declarado por el cliente); la real es
   // que sharp logre procesarlo — ver image-processing.ts.

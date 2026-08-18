@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toDataURL } from "qrcode";
 import type { Order, Invoice, Store, FiscalConfig } from "@pos/shared-types";
+import { apiFileUrl } from "@/lib/api";
 
 export type ReceiptPaperSize = "58mm" | "80mm" | "A4";
 
@@ -86,8 +87,17 @@ export function ThermalReceipt({
   return (
     <div id="thermal-receipt" className={`hidden print:block ${sizeClass} bg-white font-mono text-black`}>
       <div className="mb-2 space-y-0.5 text-center">
+        {store.logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- imagen dinámica servida por la API, no un asset del build
+          <img
+            src={apiFileUrl(store.logoUrl)}
+            alt=""
+            className="mx-auto mb-1 max-h-16 max-w-[70%] object-contain"
+          />
+        )}
         <p className="text-sm font-bold">{store.name}</p>
         {store.address && <p>{store.address}</p>}
+        {store.phone && <p>Tel: {store.phone}</p>}
         {fiscalConfig && (
           <>
             <p>CUIT: {fiscalConfig.cuit}</p>

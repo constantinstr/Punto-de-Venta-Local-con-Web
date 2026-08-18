@@ -22,6 +22,10 @@ export class CreateCustomerDto {
 
   @IsOptional()
   @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
   businessName?: string;
 
   @IsOptional()
@@ -33,10 +37,34 @@ export class CreateCustomerDto {
   address?: string;
 
   @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
   @IsEmail()
   email?: string;
 
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  whatsapp?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

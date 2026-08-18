@@ -29,6 +29,7 @@ import { PurchasesModule } from './purchases/purchases.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { BillingModule } from './billing/billing.module';
 import { DiscountsModule } from './discounts/discounts.module';
+import { QuotesModule } from './quotes/quotes.module';
 import { SubscriptionEnforcementInterceptor } from './billing/subscription-enforcement.interceptor';
 import { PlanFeatureInterceptor } from './billing/plan-feature.interceptor';
 import { DemoModule } from './demo/demo.module';
@@ -69,6 +70,7 @@ import { DemoModule } from './demo/demo.module';
     PurchasesModule,
     BillingModule,
     DiscountsModule,
+    QuotesModule,
     DemoModule,
   ],
   controllers: [AppController],

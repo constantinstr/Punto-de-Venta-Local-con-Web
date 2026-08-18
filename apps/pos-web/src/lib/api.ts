@@ -20,9 +20,13 @@ async function handle<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     useAuthStore.getState().logout();
   }
-  const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+  // Un 200 sin cuerpo (p. ej. GET /cash-shifts/current sin turno abierto,
+  // que Nest serializa como respuesta vacía para un null) tiene que resolver
+  // a null, no a {} — un objeto vacío es truthy y rompe todo código que
+  // chequea "¿hay datos?" con `if (data)`.
+  const data = (await res.json().catch(() => null)) as { message?: string | string[] } | null;
   if (!res.ok) {
-    const message = Array.isArray(data.message) ? data.message.join(", ") : (data.message ?? "Error inesperado");
+    const message = Array.isArray(data?.message) ? data.message.join(", ") : (data?.message ?? "Error inesperado");
     throw new ApiError(message, res.status);
   }
   return data as T;

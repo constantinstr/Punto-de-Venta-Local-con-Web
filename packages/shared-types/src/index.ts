@@ -75,6 +75,9 @@ export interface Store {
   id: string;
   name: string;
   address: string | null;
+  phone: string | null;
+  /** Logo para el encabezado del ticket/factura impresa. */
+  logoUrl: string | null;
 }
 
 export interface Category {
@@ -304,6 +307,7 @@ export interface PosSearchResult {
   productType: ProductType;
   availableStock: number;
   isUnlimitedStock: boolean;
+  imageUrl: string | null;
 }
 
 export interface AdjustStockInput {
@@ -419,6 +423,7 @@ export interface CreateOrderInput {
   items: CreateOrderItemInput[];
   payments: CreatePaymentInput[];
   notes?: string;
+  quoteId?: string;
 }
 
 export interface OrderItemBundleComponent {
@@ -478,6 +483,68 @@ export interface Order {
   // comprobante" usar los helpers de abajo, no invoices[0] — el orden no
   // está garantizado.
   invoices?: OrderInvoiceSummary[];
+  createdAt: string;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PRESUPUESTOS
+// ──────────────────────────────────────────────────────────────────────────
+
+export type QuoteStatus = "OPEN" | "CONVERTED" | "CANCELLED";
+// Estado efectivo, derivado en el servidor (status + validUntil vs. ahora).
+// No confundir con QuoteStatus: EXPIRED nunca se persiste.
+export type EffectiveQuoteState = "OPEN" | "EXPIRED" | "CONVERTED" | "CANCELLED";
+
+export interface CreateQuoteItemInput {
+  productId: string;
+  variantId?: string | null;
+  quantity: number;
+  discountAmount?: number;
+}
+
+export interface CreateQuoteInput {
+  storeId: string;
+  customerId?: string;
+  validDays?: number;
+  items: CreateQuoteItemInput[];
+  notes?: string;
+}
+
+export interface QuoteItem {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  productType: ProductType;
+  productName: string;
+  sku: string;
+  quantity: string;
+  unitPrice: string;
+  vatCondition: VatCondition;
+  taxRate: string;
+  discountAmount: string;
+  subtotal: string;
+  total: string;
+}
+
+export interface Quote {
+  id: string;
+  quoteNumber: number;
+  storeId: string;
+  store: Store;
+  userId: string;
+  user: { id: string; fullName: string };
+  customerId: string | null;
+  customer: Customer | null;
+  status: QuoteStatus;
+  state: EffectiveQuoteState;
+  validUntil: string;
+  subtotal: string;
+  discountAmount: string;
+  taxAmount: string;
+  total: string;
+  notes: string | null;
+  orderId: string | null;
+  items: QuoteItem[];
   createdAt: string;
 }
 
@@ -565,11 +632,19 @@ export interface Customer {
   docType: CustomerDocType;
   docNumber: string | null;
   name: string;
+  lastName: string | null;
   businessName: string | null;
   taxCondition: CustomerTaxCondition;
   address: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  country: string | null;
   email: string | null;
   phone: string | null;
+  whatsapp: string | null;
+  notes: string | null;
+  isActive: boolean;
   accountBalance: string;
   creditLimit: string | null;
 }
@@ -578,22 +653,37 @@ export interface CreateCustomerInput {
   docType?: CustomerDocType;
   docNumber?: string;
   name: string;
+  lastName?: string;
   businessName?: string;
   taxCondition?: CustomerTaxCondition;
   address?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  country?: string;
   email?: string;
   phone?: string;
+  whatsapp?: string;
+  notes?: string;
 }
 
 export interface UpdateCustomerInput {
   docType?: CustomerDocType;
   docNumber?: string;
   name?: string;
+  lastName?: string;
   businessName?: string;
   taxCondition?: CustomerTaxCondition;
   address?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  country?: string;
   email?: string;
   phone?: string;
+  whatsapp?: string;
+  notes?: string;
+  isActive?: boolean;
   creditLimit?: number | null;
 }
 
@@ -1070,13 +1160,16 @@ export interface UpdateTenantSubscriptionInput {
 export interface CreateStoreInput {
   name: string;
   address?: string;
+  phone?: string;
 }
 
 /** Un local no se borra ni se mueve de comercio: de él cuelgan ventas y
- *  comprobantes fiscales ya emitidos. Solo se corrigen nombre y dirección. */
+ *  comprobantes fiscales ya emitidos. Solo se corrigen nombre, dirección y
+ *  teléfono — el logo se sube aparte (POST /stores/:id/logo). */
 export interface UpdateStoreInput {
   name?: string;
   address?: string;
+  phone?: string;
 }
 
 export interface UpdateFiscalConfigInput {

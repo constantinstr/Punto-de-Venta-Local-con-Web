@@ -16,6 +16,8 @@ export function CartSummary({
   onSetGlobalDiscount,
   onCheckout,
   checkoutDisabled,
+  onQuote,
+  quoteDisabled,
 }: {
   totals: CartTotals;
   globalDiscount?: Discount;
@@ -24,6 +26,9 @@ export function CartSummary({
   onSetGlobalDiscount: (discount: Discount | undefined) => void;
   onCheckout: () => void;
   checkoutDisabled: boolean;
+  /** Ausente = la pantalla no ofrece presupuestar (p. ej. sin caja abierta). */
+  onQuote?: () => void;
+  quoteDisabled?: boolean;
 }) {
   return (
     <div className="space-y-3 border-t border-border pt-3  ">
@@ -101,14 +106,26 @@ export function CartSummary({
         </span>
       </div>
 
-      <button
-        type="button"
-        onClick={onCheckout}
-        disabled={checkoutDisabled}
-        className="w-full rounded-lg bg-green-600 py-3 text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        Cobrar (F9)
-      </button>
+      <div className="flex gap-2">
+        {onQuote && (
+          <button
+            type="button"
+            onClick={onQuote}
+            disabled={quoteDisabled}
+            className="rounded-lg border border-border py-3 px-4 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Presupuestar
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCheckout}
+          disabled={checkoutDisabled}
+          className="flex-1 rounded-lg bg-green-600 py-3 text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Cobrar (F9)
+        </button>
+      </div>
     </div>
   );
 }

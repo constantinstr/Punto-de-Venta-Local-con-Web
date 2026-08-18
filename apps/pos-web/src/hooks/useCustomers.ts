@@ -12,12 +12,14 @@ import { apiGet, apiPost, apiPatch } from "@/lib/api";
 export interface CustomersFilters {
   q?: string;
   withDebt?: boolean;
+  includeInactive?: boolean;
 }
 
 function buildCustomersQuery(filters: CustomersFilters): string {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
   if (filters.withDebt) params.set("withDebt", "true");
+  if (filters.includeInactive) params.set("includeInactive", "true");
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }

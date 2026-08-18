@@ -427,6 +427,7 @@ export class ProductsService {
       barcode: string | null;
       price: Prisma.Decimal;
       vatCondition: string;
+      imageUrl: string | null;
     },
     variant: {
       id: string;
@@ -454,6 +455,7 @@ export class ProductsService {
       productType: product.type,
       availableStock: stock.quantity,
       isUnlimitedStock: stock.isUnlimited,
+      imageUrl: product.imageUrl,
     };
   }
 

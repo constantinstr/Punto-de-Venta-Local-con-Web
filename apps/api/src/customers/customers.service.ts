@@ -26,12 +26,15 @@ export class CustomersService {
             ? {
                 OR: [
                   { name: { contains: query.q, mode: 'insensitive' } },
+                  { lastName: { contains: query.q, mode: 'insensitive' } },
                   { businessName: { contains: query.q, mode: 'insensitive' } },
                   { docNumber: { contains: query.q } },
+                  { whatsapp: { contains: query.q } },
                 ],
               }
             : {}),
           ...(query.withDebt === 'true' ? { accountBalance: { gt: 0 } } : {}),
+          ...(query.includeInactive === 'true' ? {} : { isActive: true }),
         },
         orderBy: { name: 'asc' },
         take: 50,

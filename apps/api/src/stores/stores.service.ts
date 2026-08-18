@@ -14,7 +14,12 @@ export class StoresService {
       // insert — ver el comentario en PlanService.assertQuota.
       await this.planService.assertQuota(tx, tenantId, 'stores', 1);
       return tx.store.create({
-        data: { tenantId, name: dto.name, address: dto.address },
+        data: {
+          tenantId,
+          name: dto.name,
+          address: dto.address,
+          phone: dto.phone,
+        },
       });
     });
   }
@@ -34,6 +39,14 @@ export class StoresService {
       const existing = await tx.store.findFirst({ where: { id, tenantId } });
       if (!existing) throw new NotFoundException('Local no encontrado');
       return tx.store.update({ where: { id }, data: dto });
+    });
+  }
+
+  async updateLogo(tenantId: string, id: string, logoUrl: string) {
+    return withTenantContext(tenantId, async (tx) => {
+      const existing = await tx.store.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new NotFoundException('Local no encontrado');
+      return tx.store.update({ where: { id }, data: { logoUrl } });
     });
   }
 }

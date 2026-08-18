@@ -22,6 +22,7 @@ export interface SellableUnit {
   // Solo para combos: qué trae, para poder mostrarlo en el carrito sin salir
   // a buscarlo al catálogo. Viene en la forma liviana de GET /products.
   bundleComponents?: { name: string; quantity: number }[];
+  imageUrl: string | null;
 }
 
 export interface CatalogProduct {
@@ -36,6 +37,7 @@ export interface CatalogProduct {
   totalStock: number;
   isUnlimitedStock: boolean;
   variants: SellableUnit[];
+  imageUrl: string | null;
 }
 
 export function usePosCatalog(storeId: string | undefined) {
@@ -89,6 +91,7 @@ export function usePosCatalog(storeId: string | undefined) {
             stockAvailable: stock.quantity,
             isUnlimitedStock: stock.isUnlimited,
             attributes: v.attributes,
+            imageUrl: product.imageUrl,
           };
         });
         units.push(...variantUnits);
@@ -104,6 +107,7 @@ export function usePosCatalog(storeId: string | undefined) {
           totalStock: variantUnits.reduce((sum, v) => sum + v.stockAvailable, 0),
           isUnlimitedStock: variantUnits.some((v) => v.isUnlimitedStock),
           variants: variantUnits,
+          imageUrl: product.imageUrl,
         });
         continue;
       }
@@ -122,6 +126,7 @@ export function usePosCatalog(storeId: string | undefined) {
         isUnlimitedStock: stock.isUnlimited,
         attributes: null,
         bundleComponents: summarizeBundle(product),
+        imageUrl: product.imageUrl,
       };
       units.push(unit);
       catalogProducts.push({
@@ -136,6 +141,7 @@ export function usePosCatalog(storeId: string | undefined) {
         totalStock: unit.stockAvailable,
         isUnlimitedStock: unit.isUnlimitedStock,
         variants: [],
+        imageUrl: product.imageUrl,
       });
     }
 

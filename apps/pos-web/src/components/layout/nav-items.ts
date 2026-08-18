@@ -22,6 +22,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/stock", label: "Stock", roles: BACK_OFFICE },
   { href: "/purchases", label: "Compras", roles: BACK_OFFICE },
   { href: "/customers", label: "Clientes", roles: BACK_OFFICE },
+  // Presupuestos: venta consultiva, no del mostrador rápido — un CASHIER
+  // vende y cobra, pero no arma cotizaciones (ver @Roles en QuotesController).
+  { href: "/quotes", label: "Presupuestos", roles: BACK_OFFICE },
   // reports: ReportsPage ya se auto-restringe a OWNER/ADMIN (ver canView).
   { href: "/reports", label: "Reportes", roles: OWNER_ADMIN },
   { href: "/settings", label: "Configuración", roles: BACK_OFFICE },

@@ -36,5 +36,8 @@ Thumbs.db
 # Docker volumes (si se montan como carpeta local)
 .docker-data/
 
+# Imágenes subidas en desarrollo (en prod viven en el volumen api_uploads)
+apps/api/uploads/
+
 # Claves privadas y CSR de AFIP (nunca deben versionarse)
 certs/

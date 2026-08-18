@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsNumber,
@@ -24,6 +25,10 @@ export class UpdateCustomerDto {
 
   @IsOptional()
   @IsString()
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
   businessName?: string;
 
   @IsOptional()
@@ -35,12 +40,40 @@ export class UpdateCustomerDto {
   address?: string;
 
   @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
   @IsEmail()
   email?: string;
 
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  whatsapp?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 
   // null explícito = sin límite (borra el límite existente); undefined =
   // no tocar el campo.

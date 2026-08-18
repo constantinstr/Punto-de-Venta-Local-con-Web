@@ -44,4 +44,10 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Presupuesto del que nace esta venta (opcional). Ver QuotesService y
+  // OrdersService.attemptCreate: se marca CONVERTED en la misma transacción.
+  @IsOptional()
+  @IsString()
+  quoteId?: string;
 }

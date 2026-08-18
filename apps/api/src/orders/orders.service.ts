@@ -190,6 +190,25 @@ export class OrdersService {
         throw new ForbiddenException('Este turno pertenece a otro cajero');
       }
 
+      // Chequeo temprano: barato y evita mover stock para nada si el
+      // presupuesto ya no se puede convertir. El @@unique de Quote.orderId
+      // es la red de seguridad real contra la carrera entre dos conversiones
+      // concurrentes (ver create()); esto es solo el mensaje claro del caso
+      // normal.
+      if (dto.quoteId) {
+        const quote = await tx.quote.findFirst({
+          where: { id: dto.quoteId, tenantId },
+        });
+        if (!quote) throw new NotFoundException('Presupuesto no encontrado');
+        if (quote.status !== 'OPEN') {
+          throw new BadRequestException(
+            quote.status === 'CONVERTED'
+              ? 'Este presupuesto ya se convirtió en una venta'
+              : 'Este presupuesto está anulado',
+          );
+        }
+      }
+
       let subtotal = 0;
       let discountAmount = 0;
       let taxAmount = 0;
@@ -404,6 +423,13 @@ export class OrdersService {
         },
         include: ORDER_INCLUDE,
       });
+
+      if (dto.quoteId) {
+        await tx.quote.update({
+          where: { id: dto.quoteId },
+          data: { status: 'CONVERTED', orderId: createdOrder.id },
+        });
+      }
 
       if (currentAccountTotal > 0) {
         await applyAccountMovement(tx, {

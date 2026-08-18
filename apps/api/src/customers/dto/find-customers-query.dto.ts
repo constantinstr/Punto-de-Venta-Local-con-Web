@@ -10,4 +10,9 @@ export class FindCustomersQueryDto {
   @IsOptional()
   @IsBooleanString()
   withDebt?: string;
+
+  // Por defecto el listado solo muestra clientes activos (baja lógica).
+  @IsOptional()
+  @IsBooleanString()
+  includeInactive?: string;
 }

@@ -8,8 +8,13 @@ interface CartState {
   items: CartItem[];
   globalDiscount?: Discount;
   selectedLineId: string | null;
+  // Presupuesto del que nace este carrito, si se llegó acá vía "Convertir"
+  // en /quotes/[id]. Viaja hasta CheckoutModal, que lo manda en POST /orders
+  // para que el backend cierre el vínculo en la misma transacción de la venta.
+  quoteId: string | null;
 
   setStoreId: (storeId: string | null) => void;
+  setQuoteId: (quoteId: string | null) => void;
   addItem: (item: Omit<CartItem, "lineId" | "quantity"> & { quantity?: number }) => void;
   incrementQuantity: (lineId: string, delta: number) => void;
   setQuantity: (lineId: string, quantity: number) => void;
@@ -31,14 +36,17 @@ export const useCartStore = create<CartState>()(
       items: [],
       globalDiscount: undefined,
       selectedLineId: null,
+      quoteId: null,
 
       setStoreId: (storeId) => {
         // Cambiar de local invalida el carrito: el stock disponible y los
         // precios pueden diferir entre sucursales.
         if (storeId !== get().storeId) {
-          set({ storeId, items: [], globalDiscount: undefined, selectedLineId: null });
+          set({ storeId, items: [], globalDiscount: undefined, selectedLineId: null, quoteId: null });
         }
       },
+
+      setQuoteId: (quoteId) => set({ quoteId }),
 
       addItem: (item) => {
         const lineId = makeLineId(item.productId, item.variantId);
@@ -92,7 +100,7 @@ export const useCartStore = create<CartState>()(
 
       selectLine: (lineId) => set({ selectedLineId: lineId }),
 
-      clearCart: () => set({ items: [], globalDiscount: undefined, selectedLineId: null }),
+      clearCart: () => set({ items: [], globalDiscount: undefined, selectedLineId: null, quoteId: null }),
     }),
     {
       name: "pos-cart",
