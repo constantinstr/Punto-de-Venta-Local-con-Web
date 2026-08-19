@@ -165,7 +165,7 @@ const FEATURES = [
 // del sistema: es una puerta de entrada a una conversación de venta, no
 // promete nada que la demo o el plan pago no tengan ya (ver nota en `items`
 // de abajo: sucursales ilimitadas ya están incluidas en Premium).
-const CONTACT_EMAIL = "info@vendenube.com";
+const CONTACT_EMAIL = "info@vendenube.com.ar";
 const WHATSAPP_NUMBER = "5493854027008";
 const WHATSAPP_URL = (text: string) => `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
 

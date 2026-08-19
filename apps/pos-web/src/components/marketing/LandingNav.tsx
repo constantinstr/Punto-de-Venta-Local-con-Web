@@ -5,12 +5,18 @@ import Image from "next/image";
 import Link from "next/link";
 
 // Nav de la landing, separado de page.tsx porque necesita estado de cliente:
-// - `scrolled` encoge el logo (empieza grande, se achica al bajar) sin tocar
-//   la altura de la barra (h-20 fijo), así el pt-20 del wrapper y los
+// - `scrolled` encoge SOLO el logo (en desktop) y el botón "Probar demo
+//   gratis" (desktop y mobile) al bajar — la altura de la barra (h-20) es
+//   constante, nunca cambia, así que el pt-20 del wrapper en page.tsx y los
 //   scroll-mt-20 de las secciones ancladas no se desincronizan.
+// - En mobile el logo NO se achica nunca (queda siempre en su tamaño
+//   grande, más alto que el botón) — a pedido explícito, distinto del
+//   comportamiento en desktop.
+// - Los links (Funciones/Precios/Contacto/Iniciar sesión) son más grandes
+//   en desktop de forma fija, sin animación de scroll.
 // - `menuOpen` es el menú hamburguesa mobile: antes de esto, los links
-//   Funciones/Precios/Contacto/Iniciar sesión vivían en un `hidden md:flex`
-//   sin ningún trigger para mobile — invisibles y sin forma de navegar.
+//   vivían en un `hidden md:flex` sin ningún trigger para mobile —
+//   invisibles y sin forma de navegar.
 const LOGO_SRC = "/vende-nube-logo.webp";
 const NAV_LINKS = [
   { href: "#funciones", label: "Funciones" },
@@ -38,19 +44,23 @@ export function LandingNav() {
       }`}
     >
       <div className="flex justify-between items-center h-20 px-4 md:px-10 max-w-7xl mx-auto">
-        <div
-          className={`flex shrink-0 items-center transition-transform duration-300 ease-out ${
-            scrolled ? "scale-[0.65]" : "scale-100"
-          }`}
-          style={{ transformOrigin: "left center" }}
-        >
+        <div className="flex shrink-0 items-center">
           {/* width/height deben mantener la proporción real del archivo
               (2000×521 ≈ 3.84:1) — Next.js los usa para fijar el
               aspect-ratio del <img>; un valor que no respeta esa proporción
               deforma el logo (bug reportado: se veía estirado en mobile).
-              Base más chica en mobile (h-8) para que entre junto al botón y
-              el hamburguesa sin que flexbox lo comprima aparte. */}
-          <Image src={LOGO_SRC} alt="Vende Nube" width={215} height={56} className="h-8 w-auto md:h-14" priority />
+              Mobile: h-11 fijo, siempre grande, no se achica con el scroll
+              (a pedido explícito) — más alto que el botón "Probar demo
+              gratis" de al lado. Desktop (md:): h-16 al cargar, se achica a
+              h-14 al bajar. */}
+          <Image
+            src={LOGO_SRC}
+            alt="Vende Nube"
+            width={215}
+            height={64}
+            priority
+            className={`w-auto h-11 transition-[height] duration-300 ${scrolled ? "md:h-14" : "md:h-16"}`}
+          />
         </div>
 
         <div className="hidden md:flex items-center gap-6">
@@ -58,27 +68,29 @@ export function LandingNav() {
             <a
               key={link.href}
               href={link.href}
-              className="text-[var(--vn-on-surface-variant)] hover:text-[var(--vn-primary)] transition-colors font-semibold text-[14px]"
+              className="text-[var(--vn-on-surface-variant)] hover:text-[var(--vn-primary)] transition-colors font-semibold text-[15px]"
             >
               {link.label}
             </a>
           ))}
           <Link
             href="/login"
-            className="text-[var(--vn-on-surface-variant)] hover:text-[var(--vn-primary)] transition-colors font-semibold text-[14px]"
+            className="text-[var(--vn-on-surface-variant)] hover:text-[var(--vn-primary)] transition-colors font-semibold text-[15px]"
           >
             Iniciar sesión
           </Link>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* En pantallas ultra angostas (menos de ~380px) el logo + este
+          {/* En pantallas ultra angostas (menos de ~400px) el logo + este
               botón + el hamburguesa no entran en una sola fila sin
               comprimirse — se oculta acá y queda disponible en el drawer
               (abajo) y como primer CTA del hero, un scroll más abajo. */}
           <a
             href="#demo"
-            className="hidden min-[380px]:inline-block vn-glow bg-[var(--vn-primary)] hover:bg-[var(--vn-primary-container)] text-[var(--vn-on-primary)] text-[14px] leading-[20px] tracking-[0.01em] font-semibold py-2 px-4 md:px-6 rounded-full transition-all active:scale-95 whitespace-nowrap"
+            className={`hidden min-[400px]:inline-block vn-glow bg-[var(--vn-primary)] hover:bg-[var(--vn-primary-container)] text-[var(--vn-on-primary)] leading-[20px] tracking-[0.01em] font-semibold rounded-full transition-all duration-300 active:scale-95 whitespace-nowrap ${
+              scrolled ? "text-[14px] py-2 px-4 md:px-6" : "text-[15px] py-2.5 px-5 md:px-7"
+            }`}
           >
             Probar demo gratis
           </a>
@@ -109,14 +121,14 @@ export function LandingNav() {
           <Link
             href="/login"
             onClick={() => setMenuOpen(false)}
-            className="py-3 text-[var(--vn-on-surface)] font-semibold text-[15px] border-b border-[var(--vn-surface-variant)] min-[380px]:border-0"
+            className="py-3 text-[var(--vn-on-surface)] font-semibold text-[15px] border-b border-[var(--vn-surface-variant)] min-[400px]:border-0"
           >
             Iniciar sesión
           </Link>
           <a
             href="#demo"
             onClick={() => setMenuOpen(false)}
-            className="min-[380px]:hidden vn-glow bg-[var(--vn-primary)] text-[var(--vn-on-primary)] text-[14px] font-semibold py-3 rounded-full text-center mt-2 mb-1"
+            className="min-[400px]:hidden vn-glow bg-[var(--vn-primary)] text-[var(--vn-on-primary)] text-[14px] font-semibold py-3 rounded-full text-center mt-2 mb-1"
           >
             Probar demo gratis
           </a>

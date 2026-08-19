@@ -73,8 +73,8 @@ export default function PrivacidadPage() {
             <h2 className="font-medium">6. Contacto</h2>
             <p className="mt-1 text-muted">
               Consultas sobre el tratamiento de tus datos:{" "}
-              <a href="mailto:info@vendenube.com" className="text-accent underline">
-                info@vendenube.com
+              <a href="mailto:info@vendenube.com.ar" className="text-accent underline">
+                info@vendenube.com.ar
               </a>
               .
             </p>
