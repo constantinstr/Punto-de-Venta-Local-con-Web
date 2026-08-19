@@ -9,6 +9,7 @@ import { useCategories, useStores } from "@/hooks/useCatalog";
 import { useCashRegisters, useCurrentShift } from "@/hooks/useCashShifts";
 import { useMyDiscountLimit } from "@/hooks/useDiscountPolicy";
 import { NetworkStatusBanner } from "@/components/pos/NetworkStatusBanner";
+import { DemoExpiredGate } from "@/components/common/DemoExpiredGate";
 import { PosMenu } from "@/components/pos/PosMenu";
 import { useCartStore } from "@/stores/useCartStore";
 import { useCashSessionStore } from "@/stores/useCashSessionStore";
@@ -278,6 +279,9 @@ export default function PosPage() {
   if (!user) return null;
 
   return (
+    // /pos vive fuera de AppShell (por peso de bundle), así que necesita su
+    // propio DemoExpiredGate — AppShell ya cubre el resto de (admin)/*.
+    <DemoExpiredGate>
     <div className="flex h-screen flex-col bg-background font-sans bg-background">
       <header className="flex items-center justify-between border-b border-border px-4 py-2 text-sm  ">
         <div className="flex items-center gap-4">
@@ -476,5 +480,6 @@ export default function PosPage() {
         />
       )}
     </div>
+    </DemoExpiredGate>
   );
 }

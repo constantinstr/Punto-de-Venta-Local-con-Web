@@ -255,13 +255,17 @@ export class SubscriptionService {
     const status = mapPreapprovalStatus(params.mpStatus);
 
     await withPlatformContext(async (tx) => {
-      await tx.tenant.update({
+      const tenant = await tx.tenant.update({
         where: { id: params.tenantId },
         data: {
           subscriptionStatus: status,
           mpPreapprovalId: params.preapprovalId,
         },
       });
+      // La autorización recurrente de MP quedando ACTIVE es, para un tenant
+      // demo, la señal de "decidió pagar" — no hace falta esperar al primer
+      // webhook de pago individual (ver convertDemoIfPaid).
+      if (status === 'ACTIVE') await this.convertDemoIfPaid(tx, tenant);
       await tx.subscriptionEvent.create({
         data: {
           tenantId: params.tenantId,
@@ -323,6 +327,11 @@ export class SubscriptionService {
               subscriptionStatus: 'ACTIVE',
             },
           });
+          // Defensa en profundidad junto con applyPreapprovalStatus: no hay
+          // garantía de en qué orden llegan los webhooks de MP, y el update
+          // de convertDemoIfPaid es un `set` absoluto — aplicarlo dos veces
+          // (uno por cada handler) es inofensivo.
+          await this.convertDemoIfPaid(tx, tenant);
         } else if (!approved) {
           await tx.tenant.update({
             where: { id: params.tenantId },
@@ -352,6 +361,31 @@ export class SubscriptionService {
     const end = new Date(now);
     end.setDate(end.getDate() + this.trialDays);
     return end;
+  }
+
+  // Convierte un tenant demo en un tenant pago EN EL MISMO REGISTRO — no
+  // crea nada nuevo, solo dos campos: planTier vuelve a "standard" y
+  // demoExpiresAt se limpia. Con eso alcanza: SubscriptionEnforcementInterceptor
+  // deja de bloquearlo (ya no matchea planTier==='demo'),
+  // DemoPurgeService.purgeExpired deja de encontrarlo (mismo motivo), y para
+  // que PlanService dejé de servirle un plan demo hay que invalidar su cache
+  // a mano — si no, el desbloqueo tarda hasta CACHE_TTL_MS de más.
+  //
+  // No-op si el tenant ya era "standard" (ej. una renovación mensual normal
+  // pasando por acá) — nada que convertir.
+  private async convertDemoIfPaid(
+    tx: Prisma.TransactionClient,
+    tenant: Pick<Tenant, 'id' | 'planTier'>,
+  ): Promise<void> {
+    if (tenant.planTier !== 'demo') return;
+    await tx.tenant.update({
+      where: { id: tenant.id },
+      data: { planTier: 'standard', demoExpiresAt: null },
+    });
+    this.planService.invalidate(tenant.id);
+    this.logger.log(
+      `Tenant demo ${tenant.id} pasó a pago — conserva su catálogo y datos.`,
+    );
   }
 }
 

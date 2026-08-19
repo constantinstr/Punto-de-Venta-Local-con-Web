@@ -1,20 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { usePlan } from "@/hooks/usePlan";
 import { useAuthStore } from "@/lib/auth-store";
+import { PremiumContactForm } from "@/components/common/PremiumContactForm";
 
 // Reemplaza a SubscriptionBanner mientras el tenant es demo (ver el corte
 // en SubscriptionBanner.tsx) — mismo lugar en AppShell, mismo formato de
 // franja, pero con su propio mensaje y su propio color (ámbar informativo,
 // no de alerta: un demo por vencer no es un problema, es el estado esperado).
 export function DemoBanner() {
-  const { isDemo, demoDaysRemaining } = usePlan();
+  const { isDemo, isDemoExpired, demoDaysRemaining } = usePlan();
   const demoCredentials = useAuthStore((s) => s.demoCredentials);
   const [showCredentials, setShowCredentials] = useState(false);
+  const [showContact, setShowContact] = useState(false);
 
-  if (!isDemo) return null;
+  // Una vez vencida, DemoExpiredGate ya reemplaza toda la pantalla con una
+  // explicación completa — este banner arriba quedaría diciendo "se bloquea
+  // en 0 días" sobre algo que ya está bloqueado, redundante y confuso.
+  if (!isDemo || isDemoExpired) return null;
 
   return (
     <div
@@ -24,9 +28,9 @@ export function DemoBanner() {
       <span>
         Estás en una demo
         {demoDaysRemaining !== null && (
-          <> — se borra en {demoDaysRemaining} día{demoDaysRemaining === 1 ? "" : "s"}</>
+          <> — se bloquea en {demoDaysRemaining} día{demoDaysRemaining === 1 ? "" : "s"}</>
         )}
-        . Los datos que cargues son de prueba y no se pueden migrar a un comercio real.
+        . Tus datos quedan guardados: si pasás a Premium seguís con el mismo comercio.
       </span>
 
       <span className="flex shrink-0 items-center gap-3">
@@ -39,15 +43,26 @@ export function DemoBanner() {
             {showCredentials ? "Ocultar mis datos" : "Ver mis datos de acceso"}
           </button>
         )}
-        <Link href="/register" className="font-medium underline underline-offset-2">
-          Registrar mi comercio
-        </Link>
+        <button
+          type="button"
+          onClick={() => setShowContact(true)}
+          className="font-medium underline underline-offset-2"
+        >
+          Quiero pasar a Premium
+        </button>
       </span>
 
       {showCredentials && demoCredentials && (
         <div className="w-full text-xs text-amber-800 dark:text-amber-400">
           Email: <code>{demoCredentials.email}</code> · Contraseña: <code>{demoCredentials.password}</code>
         </div>
+      )}
+
+      {showContact && (
+        <PremiumContactForm
+          context="Quiero pasar a Premium desde el aviso de la demo."
+          onClose={() => setShowContact(false)}
+        />
       )}
     </div>
   );

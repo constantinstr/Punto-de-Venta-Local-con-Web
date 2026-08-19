@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { withPlatformContext, withTenantContext } from '@pos/database';
+
+const DEFAULT_PURGE_GRACE_DAYS = 60;
 
 // Borra tenants demo vencidos y TODAS sus filas hijas. Ninguna FK del schema
 // tiene onDelete: Cascade (decisión deliberada, ver plan de implementación
@@ -13,15 +16,30 @@ import { withPlatformContext, withTenantContext } from '@pos/database';
 export class DemoPurgeService {
   private readonly logger = new Logger(DemoPurgeService.name);
 
-  // Fase 1: encontrar qué tenants demo vencieron. withPlatformContext es lo
-  // único que puede leer Tenant sin tener ya un tenantId de sesión (ver
-  // tenant-context.ts) — pero SOLO ve Tenant y SubscriptionEvent, no las
-  // tablas hijas, así que la purga real de cada tenant pasa a la fase 2, uno
-  // por vez, con su propio contexto RLS.
+  constructor(private readonly config: ConfigService) {}
+
+  // DEMO_PURGE_GRACE_DAYS es la ventana entre "se bloquea" (demoExpiresAt,
+  // que SubscriptionEnforcementInterceptor ya corta al instante) y "se borra
+  // de verdad" — a propósito son dos momentos distintos: alguien que decide
+  // pagar en el medio todavía tiene sus datos intactos para convertir (ver
+  // SubscriptionService.convertDemoIfPaid). Es un placeholder de negocio
+  // (60 días), por eso vive en una env var y no hardcodeado.
+  private get graceDays(): number {
+    const raw = Number(this.config.get('DEMO_PURGE_GRACE_DAYS') ?? DEFAULT_PURGE_GRACE_DAYS);
+    return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_PURGE_GRACE_DAYS;
+  }
+
+  // Fase 1: encontrar qué tenants demo llevan más de graceDays BLOQUEADOS
+  // (no simplemente vencidos — esa es una fecha distinta, ver arriba).
+  // withPlatformContext es lo único que puede leer Tenant sin tener ya un
+  // tenantId de sesión (ver tenant-context.ts) — pero SOLO ve Tenant y
+  // SubscriptionEvent, no las tablas hijas, así que la purga real de cada
+  // tenant pasa a la fase 2, uno por vez, con su propio contexto RLS.
   async purgeExpired(): Promise<{ purged: number; failed: number }> {
+    const cutoff = new Date(Date.now() - this.graceDays * 24 * 60 * 60 * 1000);
     const expired = await withPlatformContext((tx) =>
       tx.tenant.findMany({
-        where: { planTier: 'demo', demoExpiresAt: { lt: new Date() } },
+        where: { planTier: 'demo', demoExpiresAt: { lt: cutoff } },
         select: { id: true },
       }),
     );

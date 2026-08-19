@@ -33,6 +33,7 @@ import { QuotesModule } from './quotes/quotes.module';
 import { SubscriptionEnforcementInterceptor } from './billing/subscription-enforcement.interceptor';
 import { PlanFeatureInterceptor } from './billing/plan-feature.interceptor';
 import { DemoModule } from './demo/demo.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { DemoModule } from './demo/demo.module';
     DiscountsModule,
     QuotesModule,
     DemoModule,
+    SupportModule,
   ],
   controllers: [AppController],
   providers: [

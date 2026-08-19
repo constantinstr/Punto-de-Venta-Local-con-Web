@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { PremiumBadge } from "./PremiumBadge";
+import { PremiumContactForm } from "./PremiumContactForm";
 
 // Mismo patrón hand-rolled que CheckoutModal/QuoteModal (fixed inset-0 z-50 +
 // click en el fondo cierra + Escape cierra) — no existía un <Modal> genérico
 // antes de esto, así que se replica el patrón en vez de inventar uno nuevo a
 // mitad de una feature.
+//
+// El CTA ya no manda a /register: la demo conserva el mismo comercio al
+// pagar (ver SubscriptionService.convertDemoIfPaid), así que "empezar de
+// cero" dejó de tener sentido — el botón abre PremiumContactForm en su
+// lugar.
 export function UpgradeModal({
   reason,
   onClose,
@@ -15,7 +20,7 @@ export function UpgradeModal({
   reason: string;
   onClose: () => void;
 }) {
-  const router = useRouter();
+  const [showContact, setShowContact] = useState(false);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -24,6 +29,10 @@ export function UpgradeModal({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
+
+  if (showContact) {
+    return <PremiumContactForm context={reason} onClose={onClose} />;
+  }
 
   return (
     <div
@@ -51,10 +60,10 @@ export function UpgradeModal({
           </button>
           <button
             type="button"
-            onClick={() => router.push("/register")}
+            onClick={() => setShowContact(true)}
             className="rounded bg-accent py-2 text-sm font-medium text-accent-foreground"
           >
-            Registrar mi comercio
+            Quiero pasar a Premium
           </button>
         </div>
       </div>

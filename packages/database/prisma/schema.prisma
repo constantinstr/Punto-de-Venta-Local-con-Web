@@ -231,6 +231,7 @@ model Tenant {
   purchaseItems      PurchaseItem[]
   quotes             Quote[]
   quoteItems         QuoteItem[]
+  supportMessages    SupportMessage[]
 
   @@index([planTier, demoExpiresAt])
 }
@@ -1122,5 +1123,46 @@ model TiendanubeConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([tenantId])
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SOPORTE / VENTAS
+// ──────────────────────────────────────────────────────────────────────────
+
+enum SupportMessageCategory {
+  TECHNICAL // duda técnica, desde el widget flotante
+  PREMIUM_INTEREST // "quiero pasar a Premium", desde el cartel Premium o la demo vencida
+}
+
+enum SupportMessageStatus {
+  OPEN
+  RESOLVED
+}
+
+// Bandeja de entrada global del dueño del SaaS, no un dato de un tenant en
+// el sentido multi-tenant habitual — por eso NO tiene RLS (mismo espíritu
+// que SubscriptionEvent). Lectura y resolución: solo SUPERADMIN, ver
+// PlatformController. Creación: cualquier usuario logueado, sin @Roles.
+model SupportMessage {
+  id       String  @id @default(cuid())
+  // Nullable a propósito: si el tenant demo que originó el mensaje se purga,
+  // el mensaje se DESVINCULA (updateMany tenantId=null en purgeTenant), no
+  // se borra en cascada — es un lead con valor de negocio propio, sobrevive
+  // aunque el sandbox que lo generó ya no exista.
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+  userId   String?
+
+  contactName  String?
+  contactEmail String
+  category     SupportMessageCategory
+  subject      String?
+  message      String               @db.Text
+  status       SupportMessageStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
   @@index([tenantId])
 }

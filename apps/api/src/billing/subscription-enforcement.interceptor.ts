@@ -22,7 +22,10 @@ const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 //  - /webhooks: son públicos y de máquina; bloquearlos rompería el propio
 //    cobro que dispara la reactivación.
 //  - /billing: sería la trampa perfecta — vencido y sin forma de suscribirse.
-const ALWAYS_ALLOWED_PREFIXES = ['/auth', '/health', '/webhooks', '/billing'];
+//  - /support: un tenant demo BLOQUEADO tiene que poder seguir mandando
+//    "quiero pasar a Premium" — es, literalmente, el único canal que le
+//    queda para salir del bloqueo (ver PremiumContactForm / DemoExpiredGate).
+const ALWAYS_ALLOWED_PREFIXES = ['/auth', '/health', '/webhooks', '/billing', '/support'];
 
 // ES UN INTERCEPTOR Y NO UN GUARD A PROPÓSITO.
 //
@@ -72,15 +75,19 @@ export class SubscriptionEnforcementInterceptor implements NestInterceptor {
 
     // Un tenant demo vencido se corta acá, sin depender de que el job diario
     // de purga (DemoCleanupQueue) haya corrido — la corrección de la
-    // expiración no puede depender de un cron. La purga física es aparte y
-    // solo libera espacio; esto es lo que garantiza el límite de 7 días.
+    // expiración no puede depender de un cron. La purga física es aparte,
+    // tiene su propia ventana de gracia (DEMO_PURGE_GRACE_DAYS) y solo borra
+    // los datos si nadie pagó — esto es lo que garantiza el límite de 7 días
+    // de USO, no de existencia: el tenant y su catálogo siguen ahí,
+    // esperando a que se convierta en pago (ver
+    // SubscriptionService.convertDemoIfPaid).
     if (
       tenant.planTier === 'demo' &&
       tenant.demoExpiresAt &&
       tenant.demoExpiresAt.getTime() < Date.now()
     ) {
       throw new ForbiddenException(
-        'Esta demo venció. Registrá tu comercio para seguir usando el sistema.',
+        'Tu demo venció, pero tus datos siguen guardados. Contactanos para pasar a Premium y seguir usando el sistema sin perder nada.',
       );
     }
 

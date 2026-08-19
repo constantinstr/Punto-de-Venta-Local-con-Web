@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type {
   EffectiveSubscriptionState,
   EnforcementPolicy,
@@ -62,7 +63,12 @@ export default function PlatformPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-8 font-sans">
-      <h1 className="mb-1 text-2xl font-semibold text-foreground">Comercios</h1>
+      <div className="mb-1 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-foreground">Comercios</h1>
+        <Link href="/platform/support-messages" className="text-sm underline">
+          Mensajes de soporte / venta →
+        </Link>
+      </div>
       <p className="mb-6 text-sm text-muted">
         {tenants?.length ?? 0} comercio(s) · {overdue} con la suscripción vencida
       </p>

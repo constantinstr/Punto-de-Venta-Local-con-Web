@@ -64,6 +64,32 @@ export interface DemoStartResponse {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// SOPORTE / VENTAS
+// ──────────────────────────────────────────────────────────────────────────
+
+export type SupportMessageCategory = "TECHNICAL" | "PREMIUM_INTEREST";
+export type SupportMessageStatus = "OPEN" | "RESOLVED";
+
+export interface CreateSupportMessageInput {
+  category: SupportMessageCategory;
+  subject?: string;
+  message: string;
+}
+
+export interface SupportMessage {
+  id: string;
+  tenantId: string | null;
+  tenant?: { name: string } | null;
+  contactName: string | null;
+  contactEmail: string;
+  category: SupportMessageCategory;
+  subject: string | null;
+  message: string;
+  status: SupportMessageStatus;
+  createdAt: string;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // CATÁLOGO (Sprint 2)
 // ──────────────────────────────────────────────────────────────────────────
 

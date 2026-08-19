@@ -24,11 +24,11 @@ export interface PlanInfo {
 
 const FEATURE_MESSAGES: Record<PremiumFeature, string> = {
   FISCAL_INVOICING:
-    'La facturación electrónica AFIP es parte del plan pago. Registrá tu comercio para emitir Factura A/B/C.',
+    'La facturación electrónica AFIP es parte del plan pago. Contactanos para pasar a Premium y emitir Factura A/B/C sin perder lo que ya cargaste.',
   WOO_SYNC:
-    'La sincronización con WooCommerce es parte del plan pago. Registrá tu comercio para conectar tu tienda online.',
+    'La sincronización con WooCommerce es parte del plan pago. Contactanos para pasar a Premium y conectar tu tienda online.',
   TIENDANUBE_SYNC:
-    'La sincronización con Tienda Nube es parte del plan pago. Registrá tu comercio para conectar tu tienda online.',
+    'La sincronización con Tienda Nube es parte del plan pago. Contactanos para pasar a Premium y conectar tu tienda online.',
 };
 
 interface CacheEntry {
@@ -42,12 +42,13 @@ interface CacheEntry {
 // PlanFeatureInterceptor.
 @Injectable()
 export class PlanService {
-  // Cache en memoria de proceso, no distribuida: el plan de un tenant no
-  // cambia de golpe (pasar de demo a standard es un registro nuevo, no un
-  // update), así que el peor caso de un TTL de 60s es una función bloqueada
-  // de más/de menos por un minuto — nunca una brecha real, porque la
-  // frontera dura (assertQuota) siempre cuenta filas frescas dentro de la
-  // misma transacción del insert.
+  // Cache en memoria de proceso, no distribuida: el plan de un tenant casi
+  // nunca cambia (y cuando sí — demo que pasa a pago, ver
+  // SubscriptionService.convertDemoIfPaid — ese caller llama a invalidate()
+  // explícitamente), así que el peor caso de un TTL de 60s sin invalidar a
+  // mano es una función bloqueada de más/de menos por un minuto — nunca una
+  // brecha real, porque la frontera dura (assertQuota) siempre cuenta filas
+  // frescas dentro de la misma transacción del insert.
   private readonly cache = new Map<string, CacheEntry>();
 
   private remember(tenant: Pick<Tenant, 'id' | 'planTier' | 'demoExpiresAt'>): PlanInfo {
@@ -65,6 +66,15 @@ export class PlanService {
   // todos modos) — evita un round-trip extra.
   planOf(tenant: Pick<Tenant, 'id' | 'planTier' | 'demoExpiresAt'>): PlanInfo {
     return this.remember(tenant);
+  }
+
+  // Llamado desde SubscriptionService cuando un tenant demo pasa a pago
+  // (convertDemoIfPaid): a diferencia de lo que decía este comentario antes
+  // ("pasar de demo a standard es un registro nuevo, no un update"), ahora sí
+  // puede pasar en caliente sobre el mismo tenant — sin invalidar acá, el
+  // desbloqueo tardaría hasta CACHE_TTL_MS de más después de pagar.
+  invalidate(tenantId: string): void {
+    this.cache.delete(tenantId);
   }
 
   // Para servicios que no tienen la fila Tenant a mano (InvoicesService,
@@ -121,8 +131,8 @@ export class PlanService {
     if (used + adding > max) {
       throw new ForbiddenException(
         kind === 'products'
-          ? `La demo permite hasta ${DEMO_PRODUCT_LIMIT} productos. Registrá tu comercio para cargar el catálogo completo.`
-          : `La demo permite un solo local. Registrá tu comercio para abrir sucursales.`,
+          ? `La demo permite hasta ${DEMO_PRODUCT_LIMIT} productos. Contactanos para pasar a Premium y cargar el catálogo completo.`
+          : `La demo permite un solo local. Contactanos para pasar a Premium y abrir sucursales.`,
       );
     }
   }
@@ -140,7 +150,7 @@ export class PlanService {
     const usage = await this.usageOf(tenantId);
     if (usage.products + adding > DEMO_PRODUCT_LIMIT) {
       throw new ForbiddenException(
-        `Este archivo agregaría ${adding} producto(s) nuevo(s), pero la demo permite hasta ${DEMO_PRODUCT_LIMIT} en total (ya hay ${usage.products}). Registrá tu comercio para importar el catálogo completo.`,
+        `Este archivo agregaría ${adding} producto(s) nuevo(s), pero la demo permite hasta ${DEMO_PRODUCT_LIMIT} en total (ya hay ${usage.products}). Contactanos para pasar a Premium e importar el catálogo completo.`,
       );
     }
   }

@@ -5,6 +5,7 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { withPlatformContext, withTenantContext } from '@pos/database';
 import { DemoPurgeService } from '../src/demo/demo-purge.service';
+import { SubscriptionService } from '../src/billing/subscription.service';
 
 interface DemoStartBody {
   user: { id: string; tenantId: string };
@@ -35,6 +36,7 @@ interface ApiErrorBody {
 describe('Demo (modo de prueba público) — e2e', () => {
   let app: INestApplication<App>;
   let purgeService: DemoPurgeService;
+  let subscriptionService: SubscriptionService;
 
   async function startDemo() {
     const res = await request(app.getHttpServer())
@@ -103,6 +105,7 @@ describe('Demo (modo de prueba público) — e2e', () => {
     );
     await app.init();
     purgeService = moduleFixture.get(DemoPurgeService);
+    subscriptionService = moduleFixture.get(SubscriptionService);
   });
 
   afterAll(async () => {
@@ -345,5 +348,85 @@ describe('Demo (modo de prueba público) — e2e', () => {
       tx.tenant.findUnique({ where: { id: tenantId } }),
     );
     expect(stillThere).not.toBeNull();
+  });
+
+  it('purgeExpired respeta la ventana de gracia: bloqueado hace poco no se borra, bloqueado hace mucho sí', async () => {
+    const recentlyBlocked = await startDemo();
+    const longBlocked = await startDemo();
+
+    // "Bloqueado hace poco": venció ayer — dentro de los DEMO_PURGE_GRACE_DAYS
+    // (default 60) desde hoy, no debería tocarlo la purga física.
+    await withPlatformContext((tx) =>
+      tx.tenant.update({
+        where: { id: recentlyBlocked.user.tenantId },
+        data: { demoExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      }),
+    );
+    // "Bloqueado hace mucho": venció hace 61 días — ya pasó la ventana.
+    await withPlatformContext((tx) =>
+      tx.tenant.update({
+        where: { id: longBlocked.user.tenantId },
+        data: { demoExpiresAt: new Date(Date.now() - 61 * 24 * 60 * 60 * 1000) },
+      }),
+    );
+
+    await purgeService.purgeExpired();
+
+    const stillBlocked = await withPlatformContext((tx) =>
+      tx.tenant.findUnique({ where: { id: recentlyBlocked.user.tenantId } }),
+    );
+    expect(stillBlocked).not.toBeNull();
+
+    const purged = await withPlatformContext((tx) =>
+      tx.tenant.findUnique({ where: { id: longBlocked.user.tenantId } }),
+    );
+    expect(purged).toBeNull();
+  });
+
+  it('un pago acreditado convierte el tenant demo en pago, en el mismo registro', async () => {
+    const demo = await startDemo();
+    const tenantId = demo.user.tenantId;
+
+    // Vencido: si la conversión no funcionara, seguiría bloqueado después.
+    await withPlatformContext((tx) =>
+      tx.tenant.update({
+        where: { id: tenantId },
+        data: { demoExpiresAt: new Date(Date.now() - 1000) },
+      }),
+    );
+    await request(app.getHttpServer())
+      .get('/products')
+      .set(demo.auth)
+      .expect(403);
+
+    await subscriptionService.applyPayment({
+      tenantId,
+      mpPaymentId: `test-payment-${tenantId}`,
+      amount: 15000,
+      status: 'approved',
+      payload: {},
+    });
+
+    const converted = await withPlatformContext((tx) =>
+      tx.tenant.findUnique({ where: { id: tenantId } }),
+    );
+    expect(converted?.planTier).toBe('standard');
+    expect(converted?.demoExpiresAt).toBeNull();
+
+    // Ya no bloqueado, y conservó el catálogo de ejemplo sembrado al crear
+    // la demo (mismo tenant, no uno nuevo).
+    const productsRes = await request(app.getHttpServer())
+      .get('/products')
+      .set(demo.auth)
+      .expect(200);
+    expect((productsRes.body as unknown[]).length).toBe(9);
+
+    // También deja de contar como demo vivo para DEMO_MAX_LIVE / la purga.
+    const stillThereAfterPurge = await purgeService
+      .purgeExpired()
+      .then(() =>
+        withPlatformContext((tx) => tx.tenant.findUnique({ where: { id: tenantId } })),
+      );
+    expect(stillThereAfterPurge).not.toBeNull();
   });
 });
