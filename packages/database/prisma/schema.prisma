@@ -255,6 +255,7 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([tenantId])
 }
@@ -960,6 +961,23 @@ model RefreshToken {
   isRevoked Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Token de "olvidé mi contraseña" — mismo patrón que RefreshToken (nunca se
+// guarda el token plano, solo su hash SHA-256, ver token-hash.util.ts).
+// Vida corta (1h) y de un solo uso (usedAt), a diferencia de RefreshToken
+// que se puede rotar varias veces: acá no hace falta, pedir uno nuevo es
+// gratis y mantiene la ventana de ataque más chica.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }

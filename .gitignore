@@ -42,3 +42,7 @@ apps/api/uploads/
 # Claves privadas y CSR de AFIP (nunca deben versionarse)
 certs/
 graphify-out/
+
+# Backups locales de Postgres (ver scripts/backup-postgres.sh) — dumps con
+# datos reales de clientes, nunca al repo.
+backups/

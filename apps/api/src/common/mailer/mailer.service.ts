@@ -22,8 +22,8 @@ export class MailerService {
   get isConfigured(): boolean {
     return Boolean(
       this.config.get('SMTP_HOST') &&
-        this.config.get('SMTP_USER') &&
-        this.config.get('SMTP_PASS'),
+      this.config.get('SMTP_USER') &&
+      this.config.get('SMTP_PASS'),
     );
   }
 
@@ -41,6 +41,7 @@ export class MailerService {
     to: string;
     subject: string;
     text: string;
+    html?: string; // opcional: si falta, el cliente de mail muestra solo `text`
     context: string; // para el warning de "no configurado", ej. "los mensajes de soporte"
   }): Promise<boolean> {
     if (!this.isConfigured) {
@@ -61,17 +62,22 @@ export class MailerService {
       });
 
       await transporter.sendMail({
-        from: this.config.get<string>('SMTP_FROM') ?? this.config.get<string>('SMTP_USER'),
+        from:
+          this.config.get<string>('SMTP_FROM') ??
+          this.config.get<string>('SMTP_USER'),
         to: params.to,
         subject: params.subject,
         text: params.text,
+        html: params.html,
       });
       return true;
     } catch (err) {
       // Nunca hacer fallar al caller por un problema de mail (SMTP caído,
       // credenciales vencidas) — cada caller ya decidió qué hacer si no se
       // pudo mandar (loguear, etc.) antes de invocar send().
-      this.logger.error(`No se pudo enviar el mail (${params.context}): ${String(err)}`);
+      this.logger.error(
+        `No se pudo enviar el mail (${params.context}): ${String(err)}`,
+      );
       return false;
     }
   }

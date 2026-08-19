@@ -1,7 +1,7 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import {
   prisma,
@@ -12,12 +12,15 @@ import {
 } from '@pos/database';
 import type { RegisterTenantDto } from './dto/register-tenant.dto';
 import type { LoginDto } from './dto/login.dto';
-import { hashRefreshToken } from './token-hash.util';
+import { hashRefreshToken, hashToken } from './token-hash.util';
 import { SubscriptionService } from '../billing/subscription.service';
+import { MailerService } from '../common/mailer/mailer.service';
+import { renderBrandedEmail } from '../common/mailer/email-template';
 
 const BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_TTL = '7d';
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
 const DIACRITICS_REGEX = /[̀-ͯ]/g;
 
 export interface AuthTokens {
@@ -35,10 +38,13 @@ export interface SafeUser {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly mailer: MailerService,
   ) {}
 
   // Crea el Tenant, su primer Store y el usuario OWNER en una única
@@ -175,6 +181,90 @@ export class AuthService {
       where: { tokenHash, isRevoked: false },
       data: { isRevoked: true },
     });
+  }
+
+  // Siempre responde éxito genérico exista o no el email — nunca hay que
+  // filtrar (por status code, tiempo de respuesta perceptible, o mensaje)
+  // qué emails están registrados. Por eso esta función no lanza ni devuelve
+  // nada que el controller pueda usar para distinguir los dos casos.
+  async forgotPassword(rawEmail: string): Promise<void> {
+    const email = rawEmail.trim().toLowerCase();
+    const user = await withAuthLookupContext((tx) =>
+      tx.user.findUnique({ where: { email } }),
+    );
+    // Sin usuario o inactivo: no hacemos nada, pero tampoco lo delatamos —
+    // simplemente no se manda mail y la función vuelve como si nada.
+    if (!user || !user.isActive) return;
+
+    const rawToken = randomBytes(32).toString('base64url');
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const appUrl =
+      this.config.get<string>('APP_PUBLIC_URL') ?? 'http://localhost:3000';
+    const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+
+    const sent = await this.mailer.send({
+      to: user.email,
+      subject: 'Recuperar tu contraseña de Vende Nube',
+      context: 'el mail de recuperar contraseña',
+      text: `Entrá a este enlace para elegir una contraseña nueva: ${resetUrl}\n\nVence en 1 hora. Si no pediste esto, ignorá este mensaje.`,
+      html: renderBrandedEmail({
+        heading: 'Recuperá tu contraseña',
+        bodyHtml: `
+          <p style="margin:0 0 16px;">Alguien (esperamos que vos) pidió cambiar la contraseña de tu cuenta.</p>
+          <p style="margin:0; text-align:center;">
+            <a href="${resetUrl}" style="display:inline-block; padding:12px 28px; background-color:#6750a4; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:bold;">Elegir nueva contraseña</a>
+          </p>
+        `,
+        footNote: 'Este enlace vence en 1 hora.',
+      }),
+    });
+
+    if (!sent) {
+      // Igual que en DemoService: sin SMTP configurado, no queda forma de
+      // que el usuario reciba el link — se loguea para poder probar el
+      // flujo en dev, nunca corre en producción con mailer configurado.
+      this.logger.warn(
+        `[DEV] Link de recuperar contraseña para ${email}: ${resetUrl}`,
+      );
+    }
+  }
+
+  // Valida el token, cambia la contraseña, y — igual que la detección de
+  // reuso de refresh token — cierra todas las sesiones activas: un reset de
+  // contraseña es, por definición, "quiero que nadie más siga logueado con
+  // la contraseña vieja" (por ejemplo porque se filtró).
+  async resetPassword(rawToken: string, newPassword: string): Promise<void> {
+    const tokenHash = hashToken(rawToken);
+    const stored = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!stored || stored.usedAt || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException(
+        'El enlace venció o ya se usó. Pedí uno nuevo.',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+    // El User puede pertenecer a cualquier tenant (o ninguno, si fuera
+    // SUPERADMIN) — mismo motivo que login, se necesita el bypass de RLS
+    // para poder actualizarlo sin conocer su tenantId de antemano.
+    await withAuthLookupContext((tx) =>
+      tx.user.update({ where: { id: stored.userId }, data: { passwordHash } }),
+    );
+    await prisma.passwordResetToken.update({
+      where: { id: stored.id },
+      data: { usedAt: new Date() },
+    });
+    await this.revokeAllForUser(stored.userId);
   }
 
   private async revokeAllForUser(userId: string): Promise<void> {

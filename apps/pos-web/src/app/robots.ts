@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: ["/", "/terminos", "/privacidad"],
-      disallow: ["/pos", "/login", "/register", "/inicio", "/catalog", "/customers", "/purchases", "/quotes", "/reports", "/sales", "/settings", "/stock", "/platform"],
+      disallow: ["/pos", "/login", "/register", "/olvide-password", "/reset-password", "/inicio", "/catalog", "/customers", "/purchases", "/quotes", "/reports", "/sales", "/settings", "/stock", "/platform", "/ayuda"],
     },
     sitemap: "https://vendenube.com.ar/sitemap.xml",
   };

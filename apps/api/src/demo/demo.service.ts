@@ -17,6 +17,7 @@ import type { DemoStartResponse } from '@pos/shared-types';
 import { AuthService, slugify } from '../auth/auth.service';
 import { seedDemoData } from './demo-seed';
 import { MailerService } from '../common/mailer/mailer.service';
+import { renderBrandedEmail } from '../common/mailer/email-template';
 
 const BCRYPT_ROUNDS = 12;
 const DEMO_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
@@ -65,6 +66,16 @@ export class DemoService {
       subject: 'Tu código para probar el POS',
       context: 'el código de verificación de la demo',
       text: `Tu código es ${code}. Vence en 10 minutos.\n\nSi no pediste esto, ignorá este mensaje.`,
+      html: renderBrandedEmail({
+        heading: 'Tu código para probar Vende Nube',
+        bodyHtml: `
+          <p style="margin:0 0 16px;">Usá este código para confirmar tu email y entrar a la demo:</p>
+          <p style="margin:0; text-align:center;">
+            <span style="display:inline-block; padding:14px 24px; background-color:#f3f1f8; border-radius:8px; font-size:28px; font-weight:bold; letter-spacing:6px; color:#1c1b1f; font-family:'Courier New',monospace;">${code}</span>
+          </p>
+        `,
+        footNote: 'Vence en 10 minutos.',
+      }),
     });
 
     // Sin SMTP configurado (dev local sin credenciales) el código no llega
@@ -104,7 +115,9 @@ export class DemoService {
       );
     }
     if (request.attempts >= MAX_CODE_ATTEMPTS) {
-      await prisma.demoVerificationRequest.delete({ where: { id: request.id } });
+      await prisma.demoVerificationRequest.delete({
+        where: { id: request.id },
+      });
       throw new BadRequestException(
         'Demasiados intentos con este código. Pedí uno nuevo.',
       );
@@ -145,7 +158,9 @@ export class DemoService {
     demoExpiresAt: Date | null;
   }): Promise<DemoStartResponse> {
     const user = await withTenantContext(tenant.id, (tx) =>
-      tx.user.findFirst({ where: { tenantId: tenant.id, role: UserRole.OWNER } }),
+      tx.user.findFirst({
+        where: { tenantId: tenant.id, role: UserRole.OWNER },
+      }),
     );
     if (!user) {
       // No debería pasar nunca (todo tenant demo tiene su OWNER sembrado al
@@ -153,7 +168,9 @@ export class DemoService {
       // inconsistente que hay que investigar, no algo para tapar creando un
       // segundo tenant para el mismo email (rompería la garantía de "una
       // demo viva por mail").
-      this.logger.error(`Tenant demo ${tenant.id} sin usuario OWNER — dato inconsistente.`);
+      this.logger.error(
+        `Tenant demo ${tenant.id} sin usuario OWNER — dato inconsistente.`,
+      );
       throw new BadRequestException(
         'Hubo un problema con tu demo existente. Contactanos para resolverlo.',
       );
@@ -250,10 +267,18 @@ export class DemoService {
 
     const tokens = await this.authService.generateTokens(user);
 
-    this.logger.log(`Demo provisionada: tenant=${tenantId} expira=${demoExpiresAt.toISOString()}`);
+    this.logger.log(
+      `Demo provisionada: tenant=${tenantId} expira=${demoExpiresAt.toISOString()}`,
+    );
 
     return {
-      user: { id: user.id, tenantId, email: user.email, fullName: user.fullName, role: user.role },
+      user: {
+        id: user.id,
+        tenantId,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+      },
       tokens,
       demoExpiresAt: demoExpiresAt.toISOString(),
     };

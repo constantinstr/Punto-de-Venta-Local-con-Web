@@ -28,6 +28,10 @@ export const NAV_ITEMS: NavItem[] = [
   // reports: ReportsPage ya se auto-restringe a OWNER/ADMIN (ver canView).
   { href: "/reports", label: "Reportes", roles: OWNER_ADMIN },
   { href: "/settings", label: "Configuración", roles: BACK_OFFICE },
+  // Un cajero la necesita tanto como un dueño (ej. "¿cómo cierro la caja?"),
+  // de ahí el rol más amplio — a diferencia del resto de los ítems de acá
+  // abajo, que son back-office.
+  { href: "/ayuda", label: "Ayuda", roles: ALL_STAFF },
   // Panel del staff del SaaS (gestión de comercios y suscripciones). Es el
   // único ítem que un OWNER no ve nunca — ver PlatformController.
   { href: "/platform", label: "Comercios", roles: ["SUPERADMIN"] },

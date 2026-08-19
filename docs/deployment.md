@@ -358,8 +358,26 @@ cat backup-20260816-120000.sql | docker compose -f docker-compose.prod.yml exec 
 > **borra todos los datos actuales**) o restaurar en una base temporal
 > distinta y migrar a mano.
 
-### Backup automatizado (cron, opcional)
+### Backup automatizado (cron)
+
+`scripts/backup-postgres.sh` hace el dump, lo comprime, valida el gzip
+resultante, y rota lo que tenga más de 14 días en `backups/` (dentro del
+repo, local al VPS — sin destino offsite por ahora). Se corre desde el
+crontab del usuario **`ubuntu`** (no el de `root`, que es todo de
+CyberPanel — no tocar):
+
+```bash
+chmod +x scripts/backup-postgres.sh   # una sola vez
+crontab -e   # como ubuntu, no como root
+```
 
 ```cron
-0 3 * * * cd /ruta/al/repo && docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U pos -d pos_saas | gzip > backups/pos_saas-$(date +\%Y\%m\%d).sql.gz
+0 3 * * * cd /opt/vendenube && ./scripts/backup-postgres.sh >> backups/backup.log 2>&1
+```
+
+Para probar el script a mano (imprime el path del backup y su tamaño, o el
+error si algo falla):
+
+```bash
+./scripts/backup-postgres.sh
 ```

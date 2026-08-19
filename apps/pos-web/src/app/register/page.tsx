@@ -19,6 +19,11 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Gate de frontend nomás — /terminos y /privacidad siguen siendo
+  // placeholder explícitamente no vinculante (ver el aviso en esas mismas
+  // páginas). Cuando haya texto legal real revisado tiene sentido loguear
+  // esta aceptación server-side; hasta entonces no vale la pena el campo.
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   function update(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -53,11 +58,30 @@ export default function RegisterPage() {
         <Field label="Email" type="email" value={form.ownerEmail} onChange={update("ownerEmail")} />
         <Field label="Contraseña (mín. 8 caracteres)" type="password" value={form.ownerPassword} onChange={update("ownerPassword")} />
 
+        <label className="flex items-start gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Acepto los{" "}
+            <Link href="/terminos" target="_blank" className="underline">
+              Términos y Condiciones
+            </Link>{" "}
+            y la{" "}
+            <Link href="/privacidad" target="_blank" className="underline">
+              Política de Privacidad
+            </Link>
+          </span>
+        </label>
+
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !acceptedTerms}
           className="w-full rounded bg-accent py-2 text-sm font-medium text-white disabled:opacity-50  "
         >
           {loading ? "Creando cuenta…" : "Crear cuenta"}

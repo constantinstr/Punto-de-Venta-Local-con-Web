@@ -11,6 +11,8 @@ import { AuthService } from './auth.service';
 import { RegisterTenantDto } from './dto/register-tenant.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/types/auth-user';
@@ -45,6 +47,31 @@ export class AuthController {
   @HttpCode(200)
   async logout(@Body() dto: RefreshTokenDto): Promise<{ success: true }> {
     await this.authService.logout(dto.refreshToken);
+    return { success: true };
+  }
+
+  // Mismo límite que login/register-tenant: 5/min — evita que alguien
+  // enumere emails registrados a fuerza bruta o floodee de mails de reset
+  // a una víctima. La respuesta es siempre { success: true } exista o no el
+  // email (ver AuthService.forgotPassword), así que el rate limit es la
+  // única señal que un atacante podría intentar explotar.
+  @Post('forgot-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<{ success: true }> {
+    await this.authService.forgotPassword(dto.email);
+    return { success: true };
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<{ success: true }> {
+    await this.authService.resetPassword(dto.token, dto.newPassword);
     return { success: true };
   }
 

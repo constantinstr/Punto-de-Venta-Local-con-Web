@@ -1,14 +1,26 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { AuthUser, AuthTokens } from "@pos/shared-types";
 import { apiPost, ApiError } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
 export default function LoginPage() {
+  // useSearchParams (para el mensaje de "contraseña cambiada") obliga a un
+  // límite de Suspense: sin esto el build de producción falla.
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const justReset = searchParams.get("reset") === "ok";
   const setSession = useAuthStore((s) => s.setSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,6 +49,12 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6  "
       >
         <h1 className="text-xl font-semibold text-foreground  ">Iniciar sesión</h1>
+
+        {justReset && (
+          <p className="rounded bg-accent-muted px-3 py-2 text-sm text-accent">
+            Contraseña actualizada. Ya podés iniciar sesión con la nueva.
+          </p>
+        )}
 
         <label className="block text-sm">
           Email
@@ -69,6 +87,12 @@ export default function LoginPage() {
         >
           {loading ? "Ingresando…" : "Ingresar"}
         </button>
+
+        <p className="text-center text-sm text-muted">
+          <Link href="/olvide-password" className="underline">
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </p>
 
         <p className="text-center text-sm text-muted">
           ¿Todavía no tenés cuenta?{" "}
