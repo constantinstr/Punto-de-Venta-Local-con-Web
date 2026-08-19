@@ -3,9 +3,18 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
+// metadataBase resuelve las URLs absolutas de Open Graph/Twitter/favicons — sin esto
+// Next arma esas URLs relativas al host donde corra el build, no al dominio real.
+// El `template` deja que cada página (ver page.tsx, terminos/page.tsx, etc.) ponga
+// solo su título corto y acá se le agregue el sufijo de marca una sola vez.
 export const metadata: Metadata = {
-  title: "POS SaaS",
-  description: "Punto de Venta Web/PWA multi-tenant",
+  metadataBase: new URL("https://vendenube.com.ar"),
+  title: {
+    default: "Vende Nube — POS con factura AFIP y stock sincronizado",
+    template: "%s — Vende Nube",
+  },
+  description:
+    "Vendé en el mostrador y en tu tienda online (WooCommerce, Tienda Nube) con el mismo stock. Facturación electrónica AFIP, caja, clientes y reportes. Funciona offline. Probá la demo gratis.",
 };
 
 // Corre ANTES del primer pintado, de forma síncrona. Next.js renderiza en el

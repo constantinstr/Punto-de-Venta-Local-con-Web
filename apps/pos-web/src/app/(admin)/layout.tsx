@@ -1,10 +1,13 @@
-import { AppShell } from "@/components/layout/AppShell";
+import type { Metadata } from "next";
 
-// Route group — no cambia ninguna URL (/catalog, /stock, /reports,
-// /settings/... siguen siendo las mismas rutas), solo separa el bundle de
-// administración del bundle del POS (apps/pos-web/src/app/pos no está acá
-// a propósito: es pantalla completa, sin sidebar — ver docs/ARCHITECTURE.md
-// §6, "el POS no debe cargar JS de reportes/admin").
+// Un solo layout para todo el grupo de rutas (admin) — inicio, catalog, customers,
+// purchases, quotes, reports, sales, settings, stock, platform — cubre a todas de
+// una sola vez porque comparten este segmento de ruta. Todas sus page.tsx son
+// "use client", así que metadata tiene que vivir acá (Server Component).
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <AppShell>{children}</AppShell>;
+  return children;
 }

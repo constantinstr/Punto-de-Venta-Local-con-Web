@@ -117,14 +117,14 @@ export function DemoCta() {
 
   return (
     <form onSubmit={(e) => void handleRequestCode(e)} className="flex flex-col items-center gap-3">
-      <div className="flex gap-2">
+      <div className="flex w-full max-w-sm flex-col gap-2 sm:w-auto sm:max-w-none sm:flex-row">
         <input
           required
           type="email"
           placeholder="tu@email.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-64 rounded border border-border bg-surface px-4 py-3 text-sm"
+          className="w-full rounded border border-border bg-surface px-4 py-3 text-sm sm:w-64"
         />
         <button
           type="submit"

@@ -41,3 +41,4 @@ apps/api/uploads/
 
 # Claves privadas y CSR de AFIP (nunca deben versionarse)
 certs/
+graphify-out/
