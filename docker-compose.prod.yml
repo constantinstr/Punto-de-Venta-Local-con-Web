@@ -17,6 +17,7 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    mem_limit: 512m
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pos}
@@ -32,6 +33,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    mem_limit: 256m
     volumes:
       - redis_data:/data
     healthcheck:
@@ -50,6 +52,7 @@ services:
         # UNABLE_TO_VERIFY_LEAF_SIGNATURE. Vacío en producción.
         EXTRA_CA_CERT_B64: "${EXTRA_CA_CERT_B64:-}"
     restart: unless-stopped
+    mem_limit: 1536m
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,7 +107,11 @@ services:
       # quedaba pisado y el contenedor buscaba una ruta de Windows inexistente.
       NODE_EXTRA_CA_CERTS: ${EXTRA_CA_CERTS_PATH:-}
     ports:
-      - "3001:3001"
+      # Solo loopback: nada llega directo desde internet acá — el reverse
+      # proxy del host (OpenLiteSpeed/CyberPanel) es el único que le pega a
+      # este puerto. Publicarlo en 0.0.0.0 saltea cualquier firewall del SO,
+      # porque Docker escribe sus propias reglas de iptables.
+      - "127.0.0.1:3001:3001"
     volumes:
       # Imágenes de producto subidas por el usuario (ver
       # apps/api/src/products/product-image.storage.ts) — sin esto se
@@ -128,11 +135,21 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     restart: unless-stopped
+    mem_limit: 512m
     depends_on:
       api:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      # Loopback, mismo motivo que en `api`. Puerto de host 3800 (no 3000):
+      # en un VPS con CyberPanel, 127.0.0.1:3000 ya lo usa nghttpx del propio
+      # panel — 3800 es el que hay que apuntar desde el vhost del proxy.
+      - "127.0.0.1:3800:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   postgres_data:

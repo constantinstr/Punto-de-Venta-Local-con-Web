@@ -17,6 +17,15 @@ async function bootstrap() {
     rawBody: true,
   });
 
+  // En producción corre detrás de un reverse proxy (OpenLiteSpeed/CyberPanel
+  // en el VPS). Sin esto, Express ve la IP del proxy (siempre la misma) como
+  // origen de TODAS las requests, y el rate limiting por IP de
+  // @nestjs/throttler (ver security-and-deployment.md) termina compartiendo
+  // el límite entre todos los usuarios reales en vez de aplicarlo por
+  // cliente. `1` = confía en un solo hop (el proxy local), no en cualquier
+  // X-Forwarded-For que llegue de más lejos.
+  app.set('trust proxy', 1);
+
   app.use(helmet());
   app.use(compression());
   app.enableCors({
