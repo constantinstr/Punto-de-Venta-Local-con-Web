@@ -69,7 +69,7 @@ export function DemoCta() {
     return (
       <Link
         href="/inicio"
-        className="rounded bg-accent px-8 py-4 text-lg font-medium text-accent-foreground"
+        className="vn-glow rounded-full bg-[var(--vn-primary)] px-8 py-4 text-lg font-medium text-[var(--vn-on-primary)] hover:bg-[var(--vn-primary-container)]"
       >
         Ir a mi panel
       </Link>
@@ -79,7 +79,7 @@ export function DemoCta() {
   if (step === "code") {
     return (
       <form onSubmit={(e) => void handleVerifyCode(e)} className="flex flex-col items-center gap-3">
-        <p className="text-sm text-foreground">
+        <p className="text-sm text-[var(--vn-on-surface)]">
           Te mandamos un código a <strong>{email}</strong>
         </p>
         <input
@@ -90,12 +90,12 @@ export function DemoCta() {
           placeholder="Código de 6 dígitos"
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          className="w-48 rounded border border-border bg-surface px-4 py-3 text-center text-lg tracking-[0.3em] text-foreground"
+          className="w-48 rounded border border-[var(--vn-outline)] bg-[var(--vn-surface)] px-4 py-3 text-center text-lg tracking-[0.3em] text-[var(--vn-on-surface)]"
         />
         <button
           type="submit"
           disabled={verifyCode.isPending || code.length !== 6}
-          className="rounded bg-accent px-8 py-3 text-lg font-medium text-accent-foreground disabled:opacity-50"
+          className="vn-glow rounded-full bg-[var(--vn-primary)] px-8 py-3 text-lg font-medium text-[var(--vn-on-primary)] hover:bg-[var(--vn-primary-container)] disabled:opacity-50"
         >
           {verifyCode.isPending ? "Verificando…" : "Entrar a la demo"}
         </button>
@@ -106,11 +106,11 @@ export function DemoCta() {
             setCode("");
             setError(null);
           }}
-          className="text-xs text-muted underline"
+          className="text-xs text-[var(--vn-on-surface-variant)] underline"
         >
           Usar otro email / pedir código de nuevo
         </button>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p className="text-sm text-[var(--vn-error)]">{error}</p>}
       </form>
     );
   }
@@ -124,20 +124,20 @@ export function DemoCta() {
           placeholder="tu@email.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded border border-border bg-surface px-4 py-3 text-sm text-foreground sm:w-64"
+          className="w-full rounded border border-[var(--vn-outline)] bg-[var(--vn-surface)] px-4 py-3 text-sm text-[var(--vn-on-surface)] sm:w-64"
         />
         <button
           type="submit"
           disabled={requestCode.isPending}
-          className="whitespace-nowrap rounded bg-accent px-6 py-3 text-lg font-medium text-accent-foreground disabled:opacity-50"
+          className="vn-glow whitespace-nowrap rounded-full bg-[var(--vn-primary)] px-6 py-3 text-lg font-medium text-[var(--vn-on-primary)] hover:bg-[var(--vn-primary-container)] disabled:opacity-50"
         >
           {requestCode.isPending ? "Enviando…" : "Probar gratis"}
         </button>
       </div>
-      <p className="text-xs text-muted">
+      <p className="text-xs text-[var(--vn-on-surface-variant)]">
         Te mandamos un código para confirmar tu email. Sin tarjeta — se bloquea a los 7 días.
       </p>
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <p className="text-sm text-[var(--vn-error)]">{error}</p>}
     </form>
   );
 }
