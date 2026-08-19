@@ -14,7 +14,7 @@ export function NavSidebar({ user }: { user: AuthUser }) {
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-border bg-surface">
       <div className="border-b border-border px-4 py-4">
-        <p className="text-sm font-semibold text-foreground">POS SaaS</p>
+        <p className="text-sm font-semibold text-foreground">Vende Nube</p>
         <p className="mt-0.5 truncate text-xs text-muted">{user.fullName}</p>
       </div>
 
