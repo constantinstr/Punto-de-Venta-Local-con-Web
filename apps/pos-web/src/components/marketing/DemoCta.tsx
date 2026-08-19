@@ -90,7 +90,7 @@ export function DemoCta() {
           placeholder="Código de 6 dígitos"
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          className="w-48 rounded border border-border bg-surface px-4 py-3 text-center text-lg tracking-[0.3em]"
+          className="w-48 rounded border border-border bg-surface px-4 py-3 text-center text-lg tracking-[0.3em] text-foreground"
         />
         <button
           type="submit"
@@ -124,7 +124,7 @@ export function DemoCta() {
           placeholder="tu@email.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded border border-border bg-surface px-4 py-3 text-sm sm:w-64"
+          className="w-full rounded border border-border bg-surface px-4 py-3 text-sm text-foreground sm:w-64"
         />
         <button
           type="submit"
