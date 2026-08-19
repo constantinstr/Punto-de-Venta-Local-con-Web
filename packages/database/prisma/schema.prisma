@@ -1166,3 +1166,22 @@ model SupportMessage {
   @@index([status, createdAt])
   @@index([tenantId])
 }
+
+// Paso previo a POST /demo/verify-code: nada de esto es un Tenant todavía
+// (a propósito, ver DemoService — un email que nunca verifica no deja
+// tenants sueltos ni cuenta para DEMO_MAX_LIVE). Sin RLS ni tenantId: no hay
+// ningún tenant en este punto del flujo, mismo motivo que RefreshToken.
+model DemoVerificationRequest {
+  id        String   @id @default(cuid())
+  // Normalizado a minúsculas antes de guardar — ver DemoService.normalizeEmail.
+  email     String
+  codeHash  String
+  // Se incrementa en cada intento fallido; a los 5 hay que pedir un código
+  // nuevo. Sin esto, un código de 6 dígitos (1 en un millón) es adivinable
+  // a fuerza bruta en poco tiempo si alguien scriptea el POST.
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}

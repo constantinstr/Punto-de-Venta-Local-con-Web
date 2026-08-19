@@ -53,13 +53,24 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
-// Respuesta de POST /demo/start. `credentials` viaja en claro (sin mailer en
-// el repo) para que el visitante pueda volver a entrar desde otro dispositivo
-// dentro de los 7 días del sandbox — el frontend la muestra una sola vez.
+// Alta de demo en dos pasos, para exigir un email real y frenar el spam de
+// cuentas (POST /demo/request-code no devuelve nada usable — solo dispara el
+// mail con el código).
+export interface RequestDemoCodeInput {
+  email: string;
+}
+
+export interface VerifyDemoCodeInput {
+  email: string;
+  code: string;
+}
+
+// Respuesta de POST /demo/verify-code. Ya no hay contraseña que mostrar: para
+// volver a entrar alcanza con pedir un código nuevo al mismo mail (ver
+// DemoService.reissueSession) — más simple que credenciales que recordar.
 export interface DemoStartResponse {
   user: AuthUser;
   tokens: AuthTokens;
-  credentials: { email: string; password: string };
   demoExpiresAt: string;
 }
 
@@ -1121,7 +1132,7 @@ export interface SubscriptionSnapshot {
 }
 
 // "standard" = comercio real. "demo" = sandbox efímero autoprovisionado desde
-// la landing pública, ver POST /demo/start. Solo "demo" trae `usage` no-nulo.
+// la landing pública, ver POST /demo/verify-code. Solo "demo" trae `usage` no-nulo.
 export type PlanTier = "standard" | "demo";
 
 // Las tres funciones que un tenant demo tiene bloqueadas por cartel Premium.

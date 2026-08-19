@@ -13,6 +13,10 @@ interface AuthResponseBody {
 interface DemoStartBody {
   tokens: { accessToken: string };
 }
+interface RequestCodeBody {
+  ok: true;
+  debugCode: string;
+}
 interface MessageResponseBody {
   id: string;
   category: string;
@@ -48,11 +52,20 @@ describe('Support messages (soporte / venta) — e2e', () => {
     };
   }
 
+  // Alta en dos pasos, igual que el flujo real — ver el mismo helper en
+  // demo.e2e-spec.ts para el detalle de por qué debugCode es seguro en tests.
   async function startDemo() {
+    const email = `demo-support-${suffix}-${Math.random().toString(36).slice(2, 8)}@test.com`;
+    const reqRes = await request(app.getHttpServer())
+      .post('/demo/request-code')
+      .send({ email })
+      .expect(200);
+    const { debugCode } = reqRes.body as RequestCodeBody;
+
     const res = await request(app.getHttpServer())
-      .post('/demo/start')
-      .send({})
-      .expect(201);
+      .post('/demo/verify-code')
+      .send({ email, code: debugCode })
+      .expect(200);
     return {
       auth: {
         Authorization: `Bearer ${(res.body as DemoStartBody).tokens.accessToken}`,

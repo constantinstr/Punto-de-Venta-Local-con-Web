@@ -8,7 +8,7 @@ export function PremiumBadge({ title }: { title?: string }) {
   return (
     <span
       title={title}
-      className="rounded bg-accent-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent"
+      className="animate-premium-glow rounded bg-accent-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent"
     >
       Premium
     </span>

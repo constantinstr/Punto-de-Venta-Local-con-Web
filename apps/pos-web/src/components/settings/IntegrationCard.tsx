@@ -52,16 +52,32 @@ export function IntegrationCard({
     : toggleHint;
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-surface p-4">
+    <div
+      className={`flex items-start justify-between gap-4 rounded-lg border p-4 ${
+        premiumLocked
+          ? "border-border bg-surface-muted grayscale-[0.6]"
+          : "border-border bg-surface"
+      }`}
+    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={href} className="font-medium text-foreground hover:underline">
+          <Link
+            href={href}
+            className={`font-medium hover:underline ${premiumLocked ? "text-muted" : "text-foreground"}`}
+          >
             {name}
           </Link>
           <span className={`rounded px-2 py-0.5 text-xs ${STATE_STYLE[state]}`}>
             {STATE_LABEL[state]}
           </span>
-          {premiumLocked && <PremiumBadge />}
+          {/* No lleva grayscale (viene de un padre con grayscale-[0.6]) — el
+              badge es justo lo único que TIENE que seguir llamando la
+              atención en una tarjeta apagada. */}
+          {premiumLocked && (
+            <span className="[filter:grayscale(0)]">
+              <PremiumBadge />
+            </span>
+          )}
         </div>
         <p className="mt-1 text-sm text-muted">{description}</p>
         <Link href={href} className="mt-2 inline-block text-sm underline">

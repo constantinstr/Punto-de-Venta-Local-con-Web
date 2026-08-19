@@ -27,6 +27,7 @@ import { AuditModule } from './audit/audit.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
+import { MailerModule } from './common/mailer/mailer.module';
 import { BillingModule } from './billing/billing.module';
 import { DiscountsModule } from './discounts/discounts.module';
 import { QuotesModule } from './quotes/quotes.module';
@@ -46,6 +47,8 @@ import { SupportModule } from './support/support.module';
     // @Global: lo consumen FiscalConfigService (al guardar) y AfipAuthService
     // (al firmar), que viven en módulos sin relación entre sí.
     EncryptionModule,
+    // @Global: lo consumen SupportService y DemoService.
+    MailerModule,
     HealthModule,
     QueueDemoModule,
     AuthModule,

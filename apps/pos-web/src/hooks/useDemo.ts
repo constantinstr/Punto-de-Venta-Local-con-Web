@@ -3,16 +3,25 @@ import type { DemoStartResponse } from "@pos/shared-types";
 import { apiPost } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
-// Provisiona un tenant demo (POST /demo/start, sin body, sin auth previa) y
-// deja al visitante logueado — misma forma de respuesta que /auth/login, así
-// que reusa setSession en vez de un flujo de sesión aparte.
-export function useStartDemo() {
+// Alta en DOS pasos (pedir código al mail + verificarlo) — exige un email
+// real antes de crear nada, para frenar el spam de cuentas. Ninguno de los
+// dos pasos toca la sesión hasta que verifyCode confirma.
+export function useRequestDemoCode() {
+  return useMutation({
+    mutationFn: (email: string) => apiPost<{ ok: true }>("/demo/request-code", { email }),
+  });
+}
+
+export function useVerifyDemoCode() {
   const setSession = useAuthStore((s) => s.setSession);
 
   return useMutation({
-    mutationFn: () => apiPost<DemoStartResponse>("/demo/start", {}),
+    mutationFn: (input: { email: string; code: string }) =>
+      apiPost<DemoStartResponse>("/demo/verify-code", input),
+    // Misma forma que /auth/login — el frontend entra derecho, sin pedir
+    // credenciales (ya no existen: volver a entrar es pedir un código nuevo).
     onSuccess: (data) => {
-      setSession(data.user, data.tokens, data.credentials);
+      setSession(data.user, data.tokens);
     },
   });
 }

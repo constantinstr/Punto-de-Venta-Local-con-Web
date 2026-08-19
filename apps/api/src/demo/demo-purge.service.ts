@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { withPlatformContext, withTenantContext } from '@pos/database';
+import { prisma, withPlatformContext, withTenantContext } from '@pos/database';
 
 const DEFAULT_PURGE_GRACE_DAYS = 60;
 
@@ -36,6 +36,13 @@ export class DemoPurgeService {
   // SubscriptionEvent, no las tablas hijas, así que la purga real de cada
   // tenant pasa a la fase 2, uno por vez, con su propio contexto RLS.
   async purgeExpired(): Promise<{ purged: number; failed: number }> {
+    // Housekeeping barato, sin relación con la ventana de gracia de arriba:
+    // códigos de POST /demo/request-code que nadie confirmó. Sin RLS/tenant,
+    // se borran con el prisma plano — mismo criterio que RefreshToken.
+    await prisma.demoVerificationRequest.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+
     const cutoff = new Date(Date.now() - this.graceDays * 24 * 60 * 60 * 1000);
     const expired = await withPlatformContext((tx) =>
       tx.tenant.findMany({

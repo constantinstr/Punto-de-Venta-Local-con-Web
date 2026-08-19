@@ -137,6 +137,33 @@ body {
    propósito (no usa los tokens de acá): es la salida a una impresora
    térmica, no una pantalla — el color no importa y así se evita cualquier
    sorpresa de opacidad/contraste en el driver de impresión. */
+/* Brillo leve para el cartel "Premium" (PremiumBadge) — llama la atención
+   sin ser una animación agresiva. Un pulso de box-shadow, no un shimmer con
+   pseudo-elemento: más simple, y no rompe el `overflow`/border-radius de
+   cualquier contenedor donde se use el badge. Usa color-mix con el token de
+   acento para que ande igual en modo claro/oscuro sin duplicar el color. */
+@keyframes premium-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 7px 2px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+
+.animate-premium-glow {
+  animation: premium-glow 2.4s ease-in-out infinite;
+}
+
+/* Respeta la preferencia del usuario/SO de reducir movimiento — un pulso
+   infinito no es esencial para entender la UI. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-premium-glow {
+    animation: none;
+  }
+}
+
 @media print {
   body * {
     visibility: hidden;

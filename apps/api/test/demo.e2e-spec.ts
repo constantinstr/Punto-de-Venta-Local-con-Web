@@ -10,8 +10,11 @@ import { SubscriptionService } from '../src/billing/subscription.service';
 interface DemoStartBody {
   user: { id: string; tenantId: string };
   tokens: { accessToken: string };
-  credentials: { email: string; password: string };
   demoExpiresAt: string;
+}
+interface RequestCodeBody {
+  ok: true;
+  debugCode: string;
 }
 interface IdResponseBody {
   id: string;
@@ -37,15 +40,33 @@ describe('Demo (modo de prueba público) — e2e', () => {
   let app: INestApplication<App>;
   let purgeService: DemoPurgeService;
   let subscriptionService: SubscriptionService;
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-  async function startDemo() {
-    const res = await request(app.getHttpServer())
-      .post('/demo/start')
-      .send({})
-      .expect(201);
-    const body = res.body as DemoStartBody;
+  // Alta en dos pasos, igual que el flujo real: pedir código + verificarlo.
+  // debugCode solo viaja en la respuesta porque THROTTLE_DISABLE_FOR_TESTS
+  // está en 'true' para toda la suite (ver DemoService.requestCode) — nunca
+  // pasa fuera de tests, así que esto prueba el circuito completo, no un
+  // atajo aparte. Sin `email`, genera uno único por llamada (la mayoría de
+  // los tests quiere tenants independientes); pasar el mismo email dos veces
+  // ejercita "una demo viva por mail" (reissueSession) a propósito.
+  async function startDemo(email?: string) {
+    const targetEmail =
+      email ?? `demo-${suffix}-${Math.random().toString(36).slice(2, 8)}@test.com`;
+
+    const reqRes = await request(app.getHttpServer())
+      .post('/demo/request-code')
+      .send({ email: targetEmail })
+      .expect(200);
+    const { debugCode } = reqRes.body as RequestCodeBody;
+
+    const verifyRes = await request(app.getHttpServer())
+      .post('/demo/verify-code')
+      .send({ email: targetEmail, code: debugCode })
+      .expect(200);
+    const body = verifyRes.body as DemoStartBody;
     return {
       ...body,
+      email: targetEmail,
       auth: { Authorization: `Bearer ${body.tokens.accessToken}` },
     };
   }
@@ -131,6 +152,47 @@ describe('Demo (modo de prueba público) — e2e', () => {
       WOO_SYNC: false,
       TIENDANUBE_SYNC: false,
     });
+  });
+
+  it('un mismo email reingresa a la MISMA demo en vez de crear una nueva', async () => {
+    const email = `demo-reissue-${suffix}@test.com`;
+    const first = await startDemo(email);
+    const second = await startDemo(email);
+    expect(second.user.tenantId).toBe(first.user.tenantId);
+    expect(second.user.id).toBe(first.user.id);
+  });
+
+  it('un código incorrecto da 400 y no deja pasar', async () => {
+    const email = `demo-wrongcode-${suffix}@test.com`;
+    await request(app.getHttpServer())
+      .post('/demo/request-code')
+      .send({ email })
+      .expect(200);
+
+    const res = await request(app.getHttpServer())
+      .post('/demo/verify-code')
+      .send({ email, code: '000000' })
+      .expect(400);
+    expect((res.body as ApiErrorBody).message).toBeDefined();
+  });
+
+  it('un código ya usado no sirve una segunda vez', async () => {
+    const email = `demo-reuse-${suffix}@test.com`;
+    const reqRes = await request(app.getHttpServer())
+      .post('/demo/request-code')
+      .send({ email })
+      .expect(200);
+    const { debugCode } = reqRes.body as RequestCodeBody;
+
+    await request(app.getHttpServer())
+      .post('/demo/verify-code')
+      .send({ email, code: debugCode })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/demo/verify-code')
+      .send({ email, code: debugCode })
+      .expect(400);
   });
 
   it('la venta normal (Ticket X) funciona sin restricciones', async () => {

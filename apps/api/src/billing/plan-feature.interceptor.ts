@@ -58,7 +58,7 @@ export class PlanFeatureInterceptor implements NestInterceptor {
     const user = req.user;
     // Sin usuario/tenant: no es asunto de este interceptor (endpoint público,
     // o el JwtAuthGuard ya lo rechazó). Esto es lo que deja pasar sin cambios
-    // a POST /demo/start, que es anónimo — no hace falta agregarlo a ninguna
+    // a POST /demo/request-code y /demo/verify-code, anónimos — no hace falta agregarlos a ninguna
     // lista de rutas permitidas.
     if (!user || !user.tenantId) return next.handle();
     // El staff del SaaS nunca queda afuera de una función por el plan de un tenant.

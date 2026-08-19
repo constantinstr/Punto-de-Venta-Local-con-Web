@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { usePlan } from "@/hooks/usePlan";
-import { useAuthStore } from "@/lib/auth-store";
 import { PremiumContactForm } from "@/components/common/PremiumContactForm";
 
 // Reemplaza a SubscriptionBanner mientras el tenant es demo (ver el corte
@@ -11,8 +10,6 @@ import { PremiumContactForm } from "@/components/common/PremiumContactForm";
 // no de alerta: un demo por vencer no es un problema, es el estado esperado).
 export function DemoBanner() {
   const { isDemo, isDemoExpired, demoDaysRemaining } = usePlan();
-  const demoCredentials = useAuthStore((s) => s.demoCredentials);
-  const [showCredentials, setShowCredentials] = useState(false);
   const [showContact, setShowContact] = useState(false);
 
   // Una vez vencida, DemoExpiredGate ya reemplaza toda la pantalla con una
@@ -31,32 +28,17 @@ export function DemoBanner() {
           <> — se bloquea en {demoDaysRemaining} día{demoDaysRemaining === 1 ? "" : "s"}</>
         )}
         . Tus datos quedan guardados: si pasás a Premium seguís con el mismo comercio.
+        {/* Ya no hay contraseña que "ver": volver a entrar es pedir un
+            código nuevo al mismo mail desde la landing. */}
       </span>
 
-      <span className="flex shrink-0 items-center gap-3">
-        {demoCredentials && (
-          <button
-            type="button"
-            onClick={() => setShowCredentials((v) => !v)}
-            className="font-medium underline underline-offset-2"
-          >
-            {showCredentials ? "Ocultar mis datos" : "Ver mis datos de acceso"}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setShowContact(true)}
-          className="font-medium underline underline-offset-2"
-        >
-          Quiero pasar a Premium
-        </button>
-      </span>
-
-      {showCredentials && demoCredentials && (
-        <div className="w-full text-xs text-amber-800 dark:text-amber-400">
-          Email: <code>{demoCredentials.email}</code> · Contraseña: <code>{demoCredentials.password}</code>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={() => setShowContact(true)}
+        className="shrink-0 font-medium underline underline-offset-2"
+      >
+        Quiero pasar a Premium
+      </button>
 
       {showContact && (
         <PremiumContactForm

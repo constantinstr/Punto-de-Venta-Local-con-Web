@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api";
 import { ThermalReceipt, type ReceiptPaperSize } from "./ThermalReceipt";
 import { CustomerPicker } from "./CustomerPicker";
 import { PremiumBadge } from "@/components/common/PremiumBadge";
+import { UpgradeModal } from "@/components/common/UpgradeModal";
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Efectivo",
@@ -64,6 +65,7 @@ export function CheckoutModal({
   const [fiscalType, setFiscalType] = useState<RequestedInvoiceType>("TICKET_X");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
@@ -366,18 +368,45 @@ export function CheckoutModal({
           <p className="text-sm text-muted">Comprobante</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {(Object.keys(FISCAL_OPTION_LABELS) as RequestedInvoiceType[]).map((option) => {
-              const disabled = option !== "TICKET_X" && (!fiscalConfig || fiscalLocked);
+              // "Bloqueado por plan" (fiscalLocked) NO es lo mismo que
+              // "bloqueado por falta de configuración" (!fiscalConfig): lo
+              // primero es accionable (mostrar el cartel Premium), lo
+              // segundo es un callejón sin salida real. Por eso el radio NO
+              // lleva `disabled` cuando está locked-por-plan — un <input>
+              // con disabled HTML no dispara ningún evento al clickearlo, y
+              // el popup nunca se abría (ver el bug reportado).
+              const planLocked = option !== "TICKET_X" && fiscalLocked;
+              const configMissing = option !== "TICKET_X" && !fiscalConfig && !planLocked;
+              const dimmed = planLocked || configMissing;
               return (
-                <label key={option} className={disabled ? "flex items-center gap-1 opacity-40" : "flex items-center gap-1"}>
+                <label
+                  key={option}
+                  className={
+                    dimmed
+                      ? `flex items-center gap-1 opacity-40 ${planLocked ? "cursor-pointer" : ""}`
+                      : "flex items-center gap-1"
+                  }
+                  onClick={(e) => {
+                    if (!planLocked) return;
+                    e.preventDefault();
+                    setShowUpgrade(true);
+                  }}
+                >
                   <input
                     type="radio"
                     name="fiscalType"
-                    disabled={disabled}
+                    disabled={configMissing}
                     checked={fiscalType === option}
-                    onChange={() => setFiscalType(option)}
+                    onChange={() => {
+                      if (planLocked) {
+                        setShowUpgrade(true);
+                        return;
+                      }
+                      setFiscalType(option);
+                    }}
                   />
                   {FISCAL_OPTION_LABELS[option]}
-                  {fiscalLocked && option !== "TICKET_X" && <PremiumBadge />}
+                  {planLocked && <PremiumBadge />}
                 </label>
               );
             })}
@@ -385,6 +414,14 @@ export function CheckoutModal({
           {fiscalLocked ? (
             <p className="text-xs text-muted">
               La facturación AFIP es parte del plan pago — en la demo solo se puede emitir Ticket.
+              {" "}
+              <button
+                type="button"
+                onClick={() => setShowUpgrade(true)}
+                className="underline underline-offset-2"
+              >
+                Quiero pasar a Premium
+              </button>
             </p>
           ) : (
             !fiscalConfig && (
@@ -394,6 +431,13 @@ export function CheckoutModal({
             )
           )}
         </div>
+
+        {showUpgrade && (
+          <UpgradeModal
+            reason="La facturación electrónica AFIP es parte del plan pago. Contactanos para pasar a Premium y emitir Factura A/B/C sin perder lo que ya cargaste."
+            onClose={() => setShowUpgrade(false)}
+          />
+        )}
 
         {needsCustomer && (
           <div className="space-y-1">
