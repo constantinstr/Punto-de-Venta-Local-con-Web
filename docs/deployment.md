@@ -372,12 +372,17 @@ crontab -e   # como ubuntu, no como root
 ```
 
 ```cron
-0 3 * * * cd /opt/vendenube && ./scripts/backup-postgres.sh >> backups/backup.log 2>&1
+0 3 * * * cd /opt/vendenube && POSTGRES_USER=vendenube POSTGRES_DB=vendenube_prod ./scripts/backup-postgres.sh >> backups/backup.log 2>&1
 ```
+
+`POSTGRES_USER`/`POSTGRES_DB` solo hacen falta si no son el default
+`pos`/`pos_saas` (ver arriba) — en la instancia de producción real
+(vendenube.com.ar) son `vendenube`/`vendenube_prod`, por eso van explícitos
+en el cron. Ya está configurado así en el crontab del VPS.
 
 Para probar el script a mano (imprime el path del backup y su tamaño, o el
 error si algo falla):
 
 ```bash
-./scripts/backup-postgres.sh
+POSTGRES_USER=vendenube POSTGRES_DB=vendenube_prod ./scripts/backup-postgres.sh
 ```
