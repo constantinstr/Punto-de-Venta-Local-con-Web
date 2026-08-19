@@ -92,6 +92,18 @@ services:
       BILLING_TRIAL_DAYS: ${BILLING_TRIAL_DAYS:-30}
       BILLING_GRACE_DAYS: ${BILLING_GRACE_DAYS:-10}
       BILLING_WARN_BEFORE_DAYS: ${BILLING_WARN_BEFORE_DAYS:-7}
+      # Sin estas 4, MailerService.isConfigured() da false y el código de
+      # verificación de la demo / los avisos de soporte solo quedan en el log
+      # (ver common/mailer/mailer.service.ts) — no rompe nada, pero no manda
+      # mail real.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SUPPORT_NOTIFY_EMAIL: ${SUPPORT_NOTIFY_EMAIL:-}
+      DEMO_MAX_LIVE: ${DEMO_MAX_LIVE:-200}
+      DEMO_PURGE_GRACE_DAYS: ${DEMO_PURGE_GRACE_DAYS:-60}
       # Solo para máquinas de desarrollo con un antivirus que intercepta
       # HTTPS (AVG/Avast/Kaspersky "Web Shield" y similares): esos programas
       # re-firman cada certificado TLS con una CA propia que Windows conoce
